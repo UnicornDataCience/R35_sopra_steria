@@ -10,6 +10,9 @@ sdv = "*"
 transformers = "*"
 langgraph = "*"
 numpy = "*"
+hdbscan = "*"
+ipykernel = "*"
+matplotlib = "*"
 
 [dev-packages]
 
