@@ -13,6 +13,7 @@ numpy = "*"
 hdbscan = "*"
 ipykernel = "*"
 matplotlib = "*"
+seaborn = "*"
 
 [dev-packages]
 
