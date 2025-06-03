@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 [[source]]
 url = "https://pypi.org/simple"
 verify_ssl = false
@@ -20,26 +19,3 @@ seaborn = "*"
 
 [requires]
 python_version = "3.12"
-=======
-[[source]]
-url = "https://pypi.org/simple"
-verify_ssl = false
-name = "pip_conf_index_global"
-
-[packages]
-scikit-learn = "*"
-pandas = "*"
-sdv = "*"
-transformers = "*"
-langgraph = "*"
-numpy = "*"
-hdbscan = "*"
-ipykernel = "*"
-matplotlib = "*"
-seaborn = "*"
-
-[dev-packages]
-
-[requires]
-python_version = "3.12"
->>>>>>> 010c569 (v0.0.3)
