@@ -1,6 +1,7 @@
 {
     "tables": {
         "my_table_tvae": {
+            "primary_key": "PATIENT ID",
             "columns": {
                 "PATIENT ID": {
                     "sdtype": "id",

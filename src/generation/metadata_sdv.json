@@ -1,10 +1,11 @@
 {
     "tables": {
         "my_table_sdv": {
+            "primary_key": "PATIENT ID",
             "columns": {
                 "PATIENT ID": {
                     "sdtype": "id",
-                    "regex_format": "SYN-[0-9]{4}"
+                    "regex_format": "SYN-1[0-9]{3}"
                 },
                 "EDAD/AGE": {
                     "sdtype": "numerical"

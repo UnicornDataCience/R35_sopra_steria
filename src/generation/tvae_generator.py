@@ -85,14 +85,14 @@ def generate_synthetic_data_tvae(real_df, sample_size=10):
 
 
 if __name__ == "__main__":
-    # Cambia aquí el nombre de tu archivo CSV
-    archivo_csv = "C:\\Users\\Lenovo\\Desktop\\MASTER\\2º Cuatrimestre\\TFM\\2º fase\\r35_historia_clinica_sintetica\\R35_sopra_steria\\data\\real\\df_final.csv"
+    import os
+
+    script_dir = os.path.dirname(__file__)
+    archivo_csv = os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'real', 'df_final.csv'))
     sample_size = 1000
-    
     # Llama a la función y guarda el resultado
     datos_sinteticos = generate_synthetic_data_tvae(archivo_csv, sample_size)
     print(datos_sinteticos)
-    # Si quieres guardar el resultado:
-    datos_sinteticos.to_csv("C:\\Users\\Lenovo\\Desktop\\MASTER\\2º Cuatrimestre\\TFM\\2º fase\\r35_historia_clinica_sintetica\\R35_sopra_steria\\data\\synthetic\\datos_sinteticos_tvae.csv", index=False)
-    # generar json
-    datos_sinteticos.to_json("C:\\Users\\Lenovo\\Desktop\\MASTER\\2º Cuatrimestre\\TFM\\2º fase\\r35_historia_clinica_sintetica\\R35_sopra_steria\\data\\synthetic\\datos_sinteticos_tvae.json", orient='records', lines=True)
+    datos_sinteticos.to_csv(os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_tvae.csv')))
+    #json
+    datos_sinteticos.to_json(os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_tvae.json')), orient='records', lines=True)

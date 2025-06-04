@@ -73,7 +73,7 @@ def generate_synthetic_data(real_df, sample_size=1000):
     metadata.update_column(
         column_name='PATIENT ID',
         sdtype='id',
-        regex_format='SYN-[0-9]{4}')
+        regex_format='SYN-1[0-9]{3}')
     
 
     metadata.validate()  # Verifica integridad de metadatos
@@ -83,12 +83,15 @@ def generate_synthetic_data(real_df, sample_size=1000):
     return synth.sample(sample_size)
 
 if __name__ == "__main__":
-    archivo_csv = "C:\\Users\\Lenovo\\Desktop\\MASTER\\2º Cuatrimestre\\TFM\\2º fase\\r35_historia_clinica_sintetica\\R35_sopra_steria\\data\\real\\df_final.csv"
+
+    import os
+
+    script_dir = os.path.dirname(__file__)
+    archivo_csv = os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'real', 'df_final.csv'))
     sample_size = 1000
-    
     # Llama a la función y guarda el resultado
     datos_sinteticos = generate_synthetic_data(archivo_csv, sample_size)
     print(datos_sinteticos)
-    datos_sinteticos.to_csv("C:\\Users\\Lenovo\\Desktop\\MASTER\\2º Cuatrimestre\\TFM\\2º fase\\r35_historia_clinica_sintetica\\R35_sopra_steria\\data\\synthetic\\datos_sinteticos_sdv.csv", index=False)
+    datos_sinteticos.to_csv(os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_sdv.csv')))
     #json
-    datos_sinteticos.to_json("C:\\Users\\Lenovo\\Desktop\\MASTER\\2º Cuatrimestre\\TFM\\2º fase\\r35_historia_clinica_sintetica\\R35_sopra_steria\\data\\synthetic\\datos_sinteticos_sdv.json", orient='records', lines=True)
+    datos_sinteticos.to_json(os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_sdv.json')), orient='records', lines=True)
