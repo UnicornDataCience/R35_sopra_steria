@@ -14,6 +14,9 @@ hdbscan = "*"
 ipykernel = "*"
 matplotlib = "*"
 seaborn = "*"
+umap = "*"
+faiss-cpu = "*"
+umap-learn = "*"
 
 [dev-packages]
 
