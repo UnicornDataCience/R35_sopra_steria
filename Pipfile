@@ -15,6 +15,9 @@ ipykernel = "*"
 matplotlib = "*"
 seaborn = "*"
 medspacy = "*"
+umap = "*"
+faiss-cpu = "*"
+umap-learn = "*"
 
 [dev-packages]
 
