@@ -1,0 +1,59 @@
+=== DIAGNÓSTICO MEDSPACY ===
+
+spaCy básico: ✓
+medspaCy: ✗
+Modelo alternativo: ✓
+
+Extractor personalizado:
+- Gold: 70
+- Predichas: 133
+
+Ejemplo 1:
+  DOLQUINE comp 200 mg
+  Gold: [('200 mg', 'STRENGTH')]
+  Pred: [('200 mg', 'STRENGTH'), ('DOLQUINE', 'DRUG')]
+
+Ejemplo 2:
+  ACETILCISTEINA sb 200 mg
+  Gold: [('200 mg', 'STRENGTH')]
+  Pred: [('200 mg', 'STRENGTH'), ('ACETILCISTEINA', 'DRUG')]
+
+Ejemplo 3:
+  CEFTRIAXONA vial IV 1 g
+  Gold: []
+  Pred: [('1 g', 'STRENGTH')]
+
+Ejemplo 4:
+  DEXCLORFENIRAMINA amp 5 mg/1 mL
+  Gold: [('5 mg/1 mL', 'STRENGTH')]
+  Pred: [('5 mg/1 mL', 'STRENGTH'), ('DEXCLORFENIRAMINA', 'DRUG')]
+
+Ejemplo 5:
+  DOLQUINE comp 200 mg
+  Gold: [('200 mg', 'STRENGTH')]
+  Pred: [('200 mg', 'STRENGTH'), ('DOLQUINE', 'DRUG')]
+
+Ejemplo 6:
+  DOLQUINE comp 200 mg
+  Gold: [('200 mg', 'STRENGTH')]
+  Pred: [('200 mg', 'STRENGTH'), ('DOLQUINE', 'DRUG')]
+
+Ejemplo 7:
+  AMLODIPINO comp 10 mg
+  Gold: [('10 mg', 'STRENGTH')]
+  Pred: [('10 mg', 'STRENGTH')]
+
+Ejemplo 8:
+  MORFINA amp 1% 1 mL (10 mg/1 mL)
+  Gold: [('10 mg/1 mL', 'STRENGTH')]
+  Pred: [('1 mL', 'STRENGTH'), ('10 mg/1 mL', 'STRENGTH')]
+
+Ejemplo 9:
+  DEXCLORFENIRAMINA amp 5 mg/1 mL
+  Gold: [('5 mg/1 mL', 'STRENGTH')]
+  Pred: [('5 mg/1 mL', 'STRENGTH'), ('DEXCLORFENIRAMINA', 'DRUG')]
+
+Ejemplo 10:
+  DOLQUINE comp 200 mg
+  Gold: [('200 mg', 'STRENGTH')]
+  Pred: [('200 mg', 'STRENGTH'), ('DOLQUINE', 'DRUG')]

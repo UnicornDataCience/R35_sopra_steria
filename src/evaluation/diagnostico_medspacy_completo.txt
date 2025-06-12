@@ -1,0 +1,111 @@
+=== DIAGNÓSTICO MEDSPACY COMPLETO ===
+
+ESTADO DE MÉTODOS:
+  spaCy básico: ✓
+  medspaCy: ✓
+  Modelo alternativo: ✓
+  Extractor personalizado: ✓
+
+MÉTRICAS GLOBALES:
+  Precision: 0.976
+  Recall: 1.000
+  F1-Score: 0.988
+  True Positives: 41
+  False Positives: 1
+  False Negatives: 0
+
+MÉTRICAS POR COLUMNA:
+  FARMACO/DRUG_NOMBRE_COMERCIAL/COMERCIAL_NAME:
+    F1: 0.988 | Precision: 0.976 | Recall: 1.000
+
+EJEMPLOS DETALLADOS:
+
+Ejemplo 1 (DIAG ING/INPAT):
+  Texto: COVID19 - POSITIVO
+  Gold: []
+  Pred: []
+  Métricas: F1=0.000, P=0.000, R=0.000
+
+Ejemplo 2 (DIAG ING/INPAT):
+  Texto: COVID19 - POSITIVO
+  Gold: []
+  Pred: []
+  Métricas: F1=0.000, P=0.000, R=0.000
+
+Ejemplo 3 (DIAG ING/INPAT):
+  Texto: COVID19 - POSITIVO
+  Gold: []
+  Pred: []
+  Métricas: F1=0.000, P=0.000, R=0.000
+
+Ejemplo 4 (DIAG ING/INPAT):
+  Texto: COVID19 - POSITIVO
+  Gold: []
+  Pred: []
+  Métricas: F1=0.000, P=0.000, R=0.000
+
+Ejemplo 5 (DIAG ING/INPAT):
+  Texto: COVID19 - POSITIVO
+  Gold: []
+  Pred: []
+  Métricas: F1=0.000, P=0.000, R=0.000
+
+Ejemplo 6 (DIAG ING/INPAT):
+  Texto: COVID19 - POSITIVO
+  Gold: []
+  Pred: []
+  Métricas: F1=0.000, P=0.000, R=0.000
+
+Ejemplo 7 (DIAG ING/INPAT):
+  Texto: COVID19 - POSITIVO
+  Gold: []
+  Pred: []
+  Métricas: F1=0.000, P=0.000, R=0.000
+
+Ejemplo 8 (DIAG ING/INPAT):
+  Texto: COVID19 - POSITIVO
+  Gold: []
+  Pred: []
+  Métricas: F1=0.000, P=0.000, R=0.000
+
+Ejemplo 9 (DIAG ING/INPAT):
+  Texto: COVID19 - POSITIVO
+  Gold: []
+  Pred: []
+  Métricas: F1=0.000, P=0.000, R=0.000
+
+Ejemplo 10 (DIAG ING/INPAT):
+  Texto: COVID19 - POSITIVO
+  Gold: []
+  Pred: []
+  Métricas: F1=0.000, P=0.000, R=0.000
+
+Ejemplo 11 (DIAG ING/INPAT):
+  Texto: COVID19 - POSITIVO
+  Gold: []
+  Pred: []
+  Métricas: F1=0.000, P=0.000, R=0.000
+
+Ejemplo 12 (DIAG ING/INPAT):
+  Texto: COVID19 - POSITIVO
+  Gold: []
+  Pred: []
+  Métricas: F1=0.000, P=0.000, R=0.000
+
+Ejemplo 13 (DIAG ING/INPAT):
+  Texto: COVID19 - POSITIVO
+  Gold: []
+  Pred: []
+  Métricas: F1=0.000, P=0.000, R=0.000
+
+Ejemplo 14 (DIAG ING/INPAT):
+  Texto: COVID19 - POSITIVO
+  Gold: []
+  Pred: []
+  Métricas: F1=0.000, P=0.000, R=0.000
+
+Ejemplo 15 (DIAG ING/INPAT):
+  Texto: COVID19 - PENDIENTE
+  Gold: []
+  Pred: []
+  Métricas: F1=0.000, P=0.000, R=0.000

@@ -1,0 +1,39 @@
+=== EVALUACIÓN MEDSPACY - RESULTADOS ===
+
+Total entidades gold: 590
+Total entidades predichas: 0
+
+=== EJEMPLOS ===
+
+Ejemplo 1:
+Columna: FARMACO/DRUG_NOMBRE_COMERCIAL/COMERCIAL_NAME
+Texto: DOLQUINE comp 200 mg
+Gold: [('200 mg', 'STRENGTH')]
+Predichas: []
+
+Ejemplo 2:
+Columna: FARMACO/DRUG_NOMBRE_COMERCIAL/COMERCIAL_NAME
+Texto: ACETILCISTEINA sb 200 mg
+Gold: [('200 mg', 'STRENGTH')]
+Predichas: []
+
+Ejemplo 3:
+Columna: FARMACO/DRUG_NOMBRE_COMERCIAL/COMERCIAL_NAME
+Texto: DEXCLORFENIRAMINA amp 5 mg/1 mL
+Gold: [('5 mg/1', 'STRENGTH')]
+Predichas: []
+
+Ejemplo 4:
+Columna: FARMACO/DRUG_NOMBRE_COMERCIAL/COMERCIAL_NAME
+Texto: DOLQUINE comp 200 mg
+Gold: [('200 mg', 'STRENGTH')]
+Predichas: []
+
+Ejemplo 5:
+Columna: FARMACO/DRUG_NOMBRE_COMERCIAL/COMERCIAL_NAME
+Texto: DOLQUINE comp 200 mg
+Gold: [('200 mg', 'STRENGTH')]
+Predichas: []
+
+=== ANÁLISIS ===
+Solo gold standard disponible: 590 entidades
