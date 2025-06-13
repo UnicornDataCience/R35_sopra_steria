@@ -7,8 +7,11 @@ import re
 import subprocess
 import sys
 
-# Configuración inicial
-CSV_PATH = r"C:\Users\Administrator\Documents\PROYECTOS\SOPRA_STERIA\R35_sopra_steria\data\synthetic\datos_sinteticos_sdv.csv"
+# # Configuración inicial
+# CSV_PATH = r"C:\Users\Administrator\Documents\PROYECTOS\SOPRA_STERIA\R35_sopra_steria\data\synthetic\datos_sinteticos_sdv.csv"
+
+script_dir = os.getcwd()
+CSV_PATH = os.path.abspath(os.path.join(script_dir, '..', 'R35_sopra_steria', 'data', 'synthetic', 'datos_sinteticos_sdv.csv'))
 
 COLUMNAS_TEXTO = [
     "DIAG ING/INPAT",
@@ -436,7 +439,8 @@ def main():
     )
     
     # 7. Guardar diagnóstico completo
-    with open("diagnostico_medspacy_completo.txt", "w", encoding='utf-8') as f:
+    txt_PATH = os.path.abspath(os.path.join(script_dir, '..', 'R35_sopra_steria', 'src', 'evaluation', 'diagnostico_medspacy_completo.txt'))
+    with open(txt_PATH, "w", encoding='utf-8') as f:
         f.write("=== DIAGNÓSTICO MEDSPACY COMPLETO ===\n\n")
         
         f.write("ESTADO DE MÉTODOS:\n")

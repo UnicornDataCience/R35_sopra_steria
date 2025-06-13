@@ -15,7 +15,7 @@ except ImportError:
 
 # Configuración inicial
 # SOLUCIÓN 1: Raw string (r"") - RECOMENDADA
-CSV_PATH = r"C:\Users\Administrator\Documents\PROYECTOS\SOPRA_STERIA\R35_sopra_steria\data\synthetic\datos_sinteticos_sdv.csv"
+# CSV_PATH = r"C:\Users\Administrator\Documents\PROYECTOS\SOPRA_STERIA\R35_sopra_steria\data\synthetic\datos_sinteticos_sdv.csv"
 
 # SOLUCIÓN 2: Barras normales (funciona en Windows también)
 # CSV_PATH = "C:/Users/Administrator/Documents/PROYECTOS/SOPRA_STERIA/R35_sopra_steria/data/synthetic/datos_sinteticos_sdv.csv"
@@ -25,6 +25,9 @@ CSV_PATH = r"C:\Users\Administrator\Documents\PROYECTOS\SOPRA_STERIA\R35_sopra_s
 
 # SOLUCIÓN 4: Usar os.path.join (más portable)
 # CSV_PATH = os.path.join("C:", "Users", "Administrator", "Documents", "PROYECTOS", "SOPRA_STERIA", "R35_sopra_steria", "data", "synthetic", "datos_sinteticos_sdv.csv")
+
+script_dir = os.getcwd()
+CSV_PATH = os.path.abspath(os.path.join(script_dir, '..', 'R35_sopra_steria', 'data', 'synthetic', 'datos_sinteticos_sdv.csv'))
 
 UMLS_DATA_PATH = r"ruta/a/umls/data"  # Descargar de https://www.nlm.nih.gov/research/umls/
 
@@ -209,7 +212,8 @@ if __name__ == "__main__":
         
         # Guardar resultados
         try:
-            with open("resultados_evaluacion.txt", "w", encoding='utf-8') as f:
+            txt_PATH = os.path.abspath(os.path.join(script_dir, '..', 'R35_sopra_steria', 'src', 'evaluation', 'resultados_evaluacion.txt'))
+            with open(txt_PATH, "w", encoding='utf-8') as f:
                 f.write("=== REPORTE DE EVALUACIÓN DE MEDSPACY ===\n\n")
                 f.write(f"Total entidades gold standard: {len(gold_flat)}\n")
                 f.write(f"Total entidades predichas: {len(pred_flat)}\n\n")
