@@ -14,12 +14,11 @@ hdbscan = "*"
 ipykernel = "*"
 matplotlib = "*"
 seaborn = "*"
+medspacy = "*"
 umap = "*"
 faiss-cpu = "*"
 umap-learn = "*"
-medspacy = "*"
-skimpy = "*"
-streamlit = "*"
+jsonschema = "*"
 
 [dev-packages]
 
