@@ -1,0 +1,23 @@
+# LangChain Core
+langchain==0.1.0
+langchain-openai==0.0.8
+langchain-community==0.0.10
+langchain-core==0.1.7
+
+# Azure OpenAI
+openai[azure]==1.6.1
+azure-openai==1.0.0
+
+# Dependencias base
+pydantic==2.5.0
+tiktoken==0.5.2
+tenacity==8.2.3
+
+# Para agentes y herramientas
+faiss-cpu==1.7.4
+numpy==1.24.3
+pandas==2.0.3
+
+# Utilidades
+python-dotenv==1.0.0
+streamlit==1.29.0

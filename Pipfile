@@ -5,10 +5,8 @@ name = "pip_conf_index_global"
 
 [packages]
 scikit-learn = "*"
-pandas = "*"
 sdv = "*"
 transformers = "*"
-langgraph = "*"
 numpy = "*"
 hdbscan = "*"
 ipykernel = "*"
@@ -18,8 +16,16 @@ medspacy = "*"
 umap = "*"
 faiss-cpu = "*"
 umap-learn = "*"
+langchain = "*"
+langgraph = "*"
+streamlit = "*"
+pandas = "*"
+python-dotenv = "*"
 
 [dev-packages]
 
 [requires]
 python_version = "3.12"
+
+[pipenv]
+allow_prereleases = true

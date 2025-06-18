@@ -1,0 +1,42 @@
+{
+    "tables": {
+        "clinical_data_table": {
+            "primary_key": "PATIENT ID",
+            "columns": {
+                "PATIENT ID": {
+                    "sdtype": "id",
+                    "regex_format": "SYN-[0-9]{4}"
+                },
+                "EDAD/AGE": {
+                    "sdtype": "numerical"
+                },
+                "SEXO/SEX": {
+                    "sdtype": "categorical"
+                },
+                "DIAG ING/INPAT": {
+                    "sdtype": "categorical"
+                },
+                "FARMACO/DRUG_NOMBRE_COMERCIAL/COMERCIAL_NAME": {
+                    "sdtype": "categorical"
+                },
+                "UCI_DIAS/ICU_DAYS": {
+                    "sdtype": "numerical"
+                },
+                "TEMP_ING/INPAT": {
+                    "sdtype": "numerical"
+                },
+                "SAT_02_ING/INPAT": {
+                    "sdtype": "numerical"
+                },
+                "RESULTADO/VAL_RESULT": {
+                    "sdtype": "categorical"
+                },
+                "MOTIVO_ALTA/DESTINY_DISCHARGE_ING": {
+                    "sdtype": "categorical"
+                }
+            }
+        }
+    },
+    "relationships": [],
+    "METADATA_SPEC_VERSION": "V1"
+}
