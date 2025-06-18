@@ -21,6 +21,7 @@ langgraph = "*"
 streamlit = "*"
 pandas = "*"
 python-dotenv = "*"
+jsonschema = "*"
 
 [dev-packages]
 

@@ -3,8 +3,11 @@ import medspacy
 from sklearn.metrics import classification_report
 import os
 
-# Configuración inicial
-CSV_PATH = r"C:\Users\Administrator\Documents\PROYECTOS\SOPRA_STERIA\R35_sopra_steria\data\synthetic\datos_sinteticos_sdv.csv"
+# # Configuración inicial
+# CSV_PATH = r"C:\Users\Administrator\Documents\PROYECTOS\SOPRA_STERIA\R35_sopra_steria\data\synthetic\datos_sinteticos_sdv.csv"
+
+script_dir = os.getcwd()
+CSV_PATH = os.path.abspath(os.path.join(script_dir, '..', 'R35_sopra_steria', 'data', 'synthetic', 'datos_sinteticos_sdv.csv'))
 
 # Columnas a procesar
 COLUMNAS_TEXTO = [
@@ -183,7 +186,8 @@ if __name__ == "__main__":
     
     # Guardar resultados
     try:
-        with open("resultados_medspacy_simple.txt", "w", encoding='utf-8') as f:
+        txt_PATH = os.path.abspath(os.path.join(script_dir, '..', 'R35_sopra_steria', 'src', 'evaluation', 'resultados_medspacy_simple.txt'))
+        with open(txt_PATH, "w", encoding='utf-8') as f:
             f.write("=== EVALUACIÓN MEDSPACY - RESULTADOS ===\n\n")
             f.write(f"Total entidades gold: {len(gold_flat)}\n")
             f.write(f"Total entidades predichas: {len(pred_flat)}\n\n")
