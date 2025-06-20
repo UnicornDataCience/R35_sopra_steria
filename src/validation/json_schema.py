@@ -11,7 +11,7 @@ CSV_PATH_2 = os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synth
 pacient_schema = {
     "type": "object",
     "properties": {
-        "PATIENT ID": {"type": "string"},
+        "PATIENT ID": {"type": "string", "pattern": "^SYN"},
         "EDAD/AGE": {"type": "number", "minimum": 1},
         "SEXO/SEX": {"type": "string"},
         "DIAG ING/INPAT": {"type": "string"},
