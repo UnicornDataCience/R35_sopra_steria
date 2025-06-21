@@ -6,6 +6,18 @@ import sys
 from datetime import datetime
 from dotenv import load_dotenv
 
+
+# Añadir la ruta del proyecto al path de Python
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+# Aplicar parche para PyTorch-Streamlit
+try:
+    import fix_streamlit_pytorch
+except ImportError:
+    pass  # Continuar si el archivo no existe
+
 # Añadir la ruta del proyecto al path de Python
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
@@ -16,7 +28,7 @@ load_dotenv()
 
 # Configuración de página
 st.set_page_config(
-    page_title="Patientia AI",
+    page_title="Patient IA",
     page_icon=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "logo_patientia.png"),
     layout="wide",
     initial_sidebar_state="collapsed"  # Sidebar colapsado por defecto
@@ -224,6 +236,7 @@ class MockAgent:
     async def analyze_dataset(self, dataframe, context=None):
         """Método especial para análisis de dataset (mock)"""
         return await self.process("analizar dataset", context)
+
 @st.cache_resource
 def initialize_agents():
     """Inicializa agentes con Azure OpenAI"""
@@ -351,11 +364,36 @@ class SimpleOrchestrator:
             self.pipeline_data['synthetic_data'] = synthetic_data
             self.pipeline_data['generation_info'] = response.get('generation_info', {})
             
-            # Añadir botón para siguiente paso
-            response['message'] += f"\n\n✅ **{len(synthetic_data)} registros sintéticos generados**\n\n🔍 **¿Validar calidad médica?** Escribe: `validar datos`"
+            # AÑADIR INFORMACIÓN DE DESCARGA AL MENSAJE en lugar de separado
+            download_info = f"""
+
+💾 **DATOS SINTÉTICOS LISTOS PARA DESCARGA:**
+
+📊 **Estadísticas:**
+- **Registros generados:** {len(synthetic_data):,}
+- **Columnas:** {len(synthetic_data.columns)}
+- **Método:** {response.get('generation_info', {}).get('method', 'SDV')}
+- **Calidad:** {response.get('generation_info', {}).get('quality_score', 0.85):.1%}
+
+📁 **Formatos disponibles:** CSV, JSON
+📂 **Ubicación:** data/synthetic/
+
+🔍 **¿Validar calidad médica?** Escribe: `validar datos`
+📊 **¿Ver vista previa?** Escribe: `mostrar datos`
+💾 **¿Descargar ahora?** Escribe: `descargar csv` o `descargar json`"""
+
+            response['message'] += download_info
+            
+            # Marcar que hay datos para descarga
+            response['has_synthetic_data'] = True
+            response['synthetic_data_info'] = {
+                'records': len(synthetic_data),
+                'columns': len(synthetic_data.columns),
+                'generated_at': datetime.now().isoformat()
+            }
         
         return response
-    
+        
     async def _handle_validation(self, agent, user_input, context):
         """Maneja la validación médica"""
         
@@ -384,7 +422,7 @@ class SimpleOrchestrator:
         response['message'] += "\n\n📊 **¿Evaluar utilidad estadística?** Escribe: `evaluar calidad`"
         
         return response
-    
+        
     async def _handle_evaluation(self, agent, user_input, context):
         """Maneja la evaluación de utilidad"""
         
@@ -659,7 +697,6 @@ class SimpleOrchestrator:
             }
         }
 
-    # Mantener el método _analyze_with_mock existente...
     async def _analyze_with_mock(self, agent, dataframe, user_input, context):
         """Análisis mock con información real del dataset"""
         
@@ -808,12 +845,93 @@ st.markdown(f"""
 with st.container():
     # Mostrar historial de chat
     if st.session_state.chat_history:
-        for message in st.session_state.chat_history:
+        for i, message in enumerate(st.session_state.chat_history):
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
+                
+                # MOSTRAR INFORMACIÓN ESPECIAL DEL DATASET
+                if message.get("dataset_loaded"):
+                    dataset_info = message.get("dataset_info", {})
+                    dataset_preview = message.get("dataset_preview", [])
+                    
+                    # Expandir con vista previa
+                    with st.expander("👁️ Vista previa del dataset", expanded=False):
+                        if dataset_preview:
+                            preview_df = pd.DataFrame(dataset_preview)
+                            st.dataframe(preview_df, use_container_width=True)
+                        
+                        # Información técnica
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.markdown("**📊 Distribución de tipos:**")
+                            for dtype, count in dataset_info.get('dtypes', {}).items():
+                                st.text(f"{dtype}: {count} columnas")
+                        
+                        with col2:
+                            st.markdown("**📋 Información técnica:**")
+                            st.text(f"Nombre: {dataset_info.get('filename', 'N/A')}")
+                            st.text(f"Filas: {dataset_info.get('rows', 0):,}")
+                            st.text(f"Columnas: {dataset_info.get('columns', 0)}")
+                
+                # MOSTRAR BOTONES DE DESCARGA PARA DATOS SINTÉTICOS
+                if message.get("has_synthetic_data") and hasattr(st.session_state.orchestrator, 'pipeline_data'):
+                    synthetic_data = st.session_state.orchestrator.pipeline_data.get('synthetic_data')
+                    
+                    if synthetic_data is not None:
+                        st.markdown("---")
+                        
+                        # Botones de descarga DENTRO del mensaje
+                        col1, col2, col3 = st.columns(3)
+                        
+                        with col1:
+                            csv_data = synthetic_data.to_csv(index=False)
+                            st.download_button(
+                                label="📄 Descargar CSV",
+                                data=csv_data,
+                                file_name=f"datos_sinteticos_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                                mime="text/csv",
+                                key=f"csv_download_{i}",
+                                use_container_width=True
+                            )
+                        
+                        with col2:
+                            json_data = synthetic_data.to_json(orient='records', indent=2)
+                            st.download_button(
+                                label="📋 Descargar JSON",
+                                data=json_data,
+                                file_name=f"datos_sinteticos_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
+                                mime="application/json",
+                                key=f"json_download_{i}",
+                                use_container_width=True
+                            )
+                        
+                        with col3:
+                            if st.button("👁️ Vista Previa", key=f"preview_{i}", use_container_width=True):
+                                # Toggle para mostrar/ocultar vista previa
+                                preview_key = f"show_preview_{i}"
+                                if preview_key not in st.session_state:
+                                    st.session_state[preview_key] = False
+                                st.session_state[preview_key] = not st.session_state[preview_key]
+                        
+                        # Vista previa condicional
+                        preview_key = f"show_preview_{i}"
+                        if st.session_state.get(preview_key, False):
+                            with st.expander("👁️ Vista previa de datos sintéticos", expanded=True):
+                                col_prev1, col_prev2 = st.columns(2)
+                                
+                                with col_prev1:
+                                    st.markdown("**📊 Primeros 5 registros:**")
+                                    st.dataframe(synthetic_data.head(), use_container_width=True)
+                                
+                                with col_prev2:
+                                    st.markdown("**📈 Estadísticas básicas:**")
+                                    numeric_cols = synthetic_data.select_dtypes(include=['number']).columns[:5]
+                                    if len(numeric_cols) > 0:
+                                        st.dataframe(synthetic_data[numeric_cols].describe(), use_container_width=True)
+                                    else:
+                                        st.info("No hay columnas numéricas")
     else:
         # Mensaje de bienvenida centrado
-        #st.markdown('<div class="welcome-container">', unsafe_allow_html=True)
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             with st.chat_message("assistant"):
@@ -840,9 +958,8 @@ with st.container():
                     - Solicita análisis o validación de datos 
                     - Escribe "ayuda" para ver más opciones  
                     """)
-        st.markdown('</div>', unsafe_allow_html=True)
 
-# Área de upload de archivos (se muestra cuando no hay archivo cargado)
+# Área de upload de archivos (solo cuando no hay archivo cargado)
 if not st.session_state.file_uploaded:
     with st.expander("📁 Subir archivo de datos", expanded=False):
         uploaded_file = st.file_uploader(
@@ -860,7 +977,7 @@ if not st.session_state.file_uploaded:
                     else:
                         df = pd.read_excel(uploaded_file)
                 
-                # Actualizar contexto con información detallada
+                # Actualizar contexto
                 st.session_state.context.update({
                     "dataframe": df,
                     "filename": uploaded_file.name,
@@ -873,50 +990,41 @@ if not st.session_state.file_uploaded:
                 })
                 st.session_state.file_uploaded = True
                 
-                # Auto-message de análisis con contexto mejorado
+                # AÑADIR INFORMACIÓN DEL DATASET AL CHAT en lugar de fuera
+                dataset_info_message = f"""📁 **Archivo cargado exitosamente: {uploaded_file.name}**
+
+📊 **Información del dataset:**
+- **Registros:** {len(df):,} filas  
+- **Variables:** {len(df.columns)} columnas
+- **Tamaño:** {df.memory_usage(deep=True).sum() / 1024 / 1024:.1f} MB
+
+✅ **Dataset listo para análisis**"""
+
+                # Añadir al historial del chat en lugar de mostrar separado
                 st.session_state.chat_history.append({
-                    "role": "user",
-                    "content": f"He subido el archivo {uploaded_file.name} con {len(df):,} registros y {len(df.columns)} columnas. Por favor realiza un análisis completo de estos datos clínicos.",
-                    "timestamp": datetime.now().isoformat()
+                    "role": "assistant",
+                    "content": dataset_info_message,
+                    "agent": "system",
+                    "timestamp": datetime.now().isoformat(),
+                    "dataset_loaded": True,
+                    "dataset_preview": df.head().to_dict('records'),
+                    "dataset_info": {
+                        "filename": uploaded_file.name,
+                        "rows": len(df),
+                        "columns": len(df.columns),
+                        "dtypes": dict(df.dtypes.value_counts())
+                    }
                 })
+                
                 
                 st.rerun()
                 
             except Exception as e:
                 st.error(f"❌ Error al cargar archivo: {e}")
-                st.info("💡 Verifica que el archivo sea un CSV o Excel válido")
-
-# Mostrar información del archivo cargado FUERA del expander
-if st.session_state.file_uploaded:
-    filename = st.session_state.context.get("filename", "archivo")
-    rows = st.session_state.context.get("rows", 0)
-    cols = st.session_state.context.get("columns", 0)
-    
-    # Información del archivo en un container separado
-    st.success(f"✅ **{filename}** cargado exitosamente")
-    st.info(f"📊 **Datos:** {rows:,} filas • {cols} columnas")
-    
-    # Vista previa en un expander independiente
-    with st.expander("👁️ Vista previa de datos", expanded=False):
-        df = st.session_state.context.get("dataframe")
-        if df is not None:
-            st.dataframe(df.head(), use_container_width=True)
-            
-            # Información adicional
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown("**📋 Columnas principales:**")
-                st.text("\n".join(df.columns[:10]))
-                if len(df.columns) > 10:
-                    st.caption(f"... y {len(df.columns) - 10} columnas más")
-            
-            with col2:
-                st.markdown("**📊 Tipos de datos:**")
-                dtype_counts = df.dtypes.value_counts()
-                for dtype, count in dtype_counts.items():
-                    st.text(f"{dtype}: {count} columnas")
 
 # Input del usuario con diseño personalizado
+# Reemplazar el bloque de procesamiento del prompt
+
 if prompt := st.chat_input("💭 Escribe tu mensaje aquí... (ej: 'analizar datos', 'generar sintéticos', 'ayuda')", key="main_input"):
     
     # Añadir mensaje del usuario
@@ -930,123 +1038,198 @@ if prompt := st.chat_input("💭 Escribe tu mensaje aquí... (ej: 'analizar dato
     with st.chat_message("user"):
         st.markdown(prompt)
     
-    # Procesar con orquestador
-    with st.chat_message("assistant"):
-        with st.spinner("🧠 Procesando..."):
-            try:
-                # Ejecutar procesamiento asíncrono
+    # INICIALIZAR result con valor por defecto
+    result = {"message": "❌ Error de procesamiento", "agent": "error"}
+    
+    try:
+        # Procesar con orquestador sin usar context manager para chat_message
+        # Crear el mensaje pero no usarlo como context manager
+        message_placeholder = st.chat_message("assistant")
+        
+        # Mostrar spinner en el mensaje
+        with message_placeholder:
+            with st.spinner("🧠 Procesando..."):
+                # Ejecutar procesamiento asíncrono con tiempo máximo
                 result = asyncio.run(
-                    st.session_state.orchestrator.process_user_input(
-                        prompt, 
-                        st.session_state.context
+                    asyncio.wait_for(
+                        st.session_state.orchestrator.process_user_input(
+                            prompt, 
+                            st.session_state.context
+                        ),
+                        timeout=60  # 60 segundos máximo
                     )
                 )
                 
                 response_content = result.get("message", "❌ Sin respuesta")
                 agent_name = result.get("agent", "IA")
                 
+                # Mostrar respuesta
                 st.markdown(response_content)
                 
-                # Añadir respuesta del asistente
-                st.session_state.chat_history.append({
-                    "role": "assistant",
-                    "content": response_content,
-                    "agent": agent_name,
-                    "timestamp": datetime.now().isoformat()
-                })
-                
-                # Actualizar agente actual si cambió
-                if result.get("current_agent"):
-                    st.session_state.orchestrator.current_agent = result["current_agent"]
-                
-            except Exception as e:
-                error_msg = f"❌ **Error del sistema:** {str(e)}"
-                st.error(error_msg)
-                
-                st.session_state.chat_history.append({
-                    "role": "assistant",
-                    "content": error_msg,
-                    "agent": "system_error",
-                    "timestamp": datetime.now().isoformat()
-                })
-
-# Mostrar panel de descarga si hay datos disponibles
-if hasattr(st.session_state.orchestrator, 'pipeline_data') and st.session_state.orchestrator.pipeline_data.get('generation_complete'):
-    
-    # Mostrar información fuera de expanders
-    synthetic_data = st.session_state.orchestrator.pipeline_data.get('synthetic_data')
-    
-    if synthetic_data is not None:
-        st.markdown("---")
-        st.markdown("### 💾 **Datos Sintéticos Listos para Descarga**")
+                # Mostrar botones de descarga si hay datos sintéticos
+                if result.get('has_synthetic_data') and hasattr(st.session_state.orchestrator, 'pipeline_data'):
+                    synthetic_data = st.session_state.orchestrator.pipeline_data.get('synthetic_data')
+                    if synthetic_data is not None:
+                        st.markdown("---")
+                        
+                        # Botones de descarga DENTRO del mensaje
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            csv_data = synthetic_data.to_csv(index=False)
+                            st.download_button(
+                                label="📄 Descargar CSV",
+                                data=csv_data,
+                                file_name=f"datos_sinteticos_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                                mime="text/csv",
+                                key="csv_download_direct",
+                                use_container_width=True
+                            )
+                        
+                        with col2:
+                            json_data = synthetic_data.to_json(orient='records', indent=2)
+                            st.download_button(
+                                label="📋 Descargar JSON",
+                                data=json_data,
+                                file_name=f"datos_sinteticos_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
+                                mime="application/json",
+                                key="json_download_direct",
+                                use_container_width=True
+                            )
         
-        # Información del dataset
-        col_info1, col_info2, col_info3 = st.columns(3)
-        with col_info1:
-            st.metric("📊 Registros", f"{len(synthetic_data):,}")
-        with col_info2:
-            st.metric("📋 Columnas", len(synthetic_data.columns))
-        with col_info3:
-            st.metric("⏰ Generado", datetime.now().strftime('%H:%M'))
+        # Añadir respuesta al historial DESPUÉS de mostrarla
+        assistant_message = {
+            "role": "assistant",
+            "content": response_content,
+            "agent": agent_name,
+            "timestamp": datetime.now().isoformat()
+        }
         
-        # Botones de descarga
-        st.markdown("#### 📁 Descargar Archivos:")
-        col1, col2, col3 = st.columns(3)
+        # Marcar si tiene datos sintéticos
+        if result.get('has_synthetic_data'):
+            assistant_message['has_synthetic_data'] = True
+            assistant_message['synthetic_data_info'] = result.get('synthetic_data_info', {})
         
-        with col1:
-            # Botón CSV
-            csv_data = synthetic_data.to_csv(index=False)
-            st.download_button(
-                label="📄 Descargar CSV",
-                data=csv_data,
-                file_name=f"datos_sinteticos_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                mime="text/csv",
-                use_container_width=True,
-                type="primary"
-            )
+        st.session_state.chat_history.append(assistant_message)
         
-        with col2:
-            # Botón JSON
-            json_data = synthetic_data.to_json(orient='records', indent=2)
-            st.download_button(
-                label="📋 Descargar JSON",
-                data=json_data,
-                file_name=f"datos_sinteticos_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
-                mime="application/json",
-                use_container_width=True
-            )
-        
-        with col3:
-            # Botón para reiniciar pipeline
-            if st.button("🔄 Nuevo Pipeline", use_container_width=True):
-                if hasattr(st.session_state.orchestrator, 'pipeline_data'):
-                    st.session_state.orchestrator.pipeline_data = {}
-                st.rerun()
-        
-        # Vista previa CON toggle en lugar de expander
-        st.markdown("#### 👁️ Vista Previa de Datos:")
-        
-        # Usar checkbox en lugar de expander
-        show_preview = st.checkbox("Mostrar vista previa de datos sintéticos", value=False)
-        
-        if show_preview:
-            # Mostrar estadísticas básicas
-            col_stats1, col_stats2 = st.columns(2)
+        # Actualizar agente actual si cambió
+        if result.get("current_agent"):
+            st.session_state.orchestrator.current_agent = result["current_agent"]
             
-            with col_stats1:
-                st.markdown("**📊 Primeros 5 registros:**")
-                st.dataframe(synthetic_data.head(), use_container_width=True)
-            
-            with col_stats2:
-                st.markdown("**📈 Estadísticas básicas:**")
-                numeric_cols = synthetic_data.select_dtypes(include=['number']).columns[:5]
-                if len(numeric_cols) > 0:
-                    st.dataframe(synthetic_data[numeric_cols].describe(), use_container_width=True)
-                else:
-                    st.info("No hay columnas numéricas para mostrar estadísticas")
+    except asyncio.TimeoutError:
+        with st.chat_message("assistant"):
+            st.error("⌛ El proceso tardó demasiado tiempo y fue interrumpido. Por favor, intenta con un comando más simple.")
         
-        st.markdown("---")
+        st.session_state.chat_history.append({
+            "role": "assistant",
+            "content": "⌛ El proceso tardó demasiado tiempo y fue interrumpido. Por favor, intenta con un comando más simple.",
+            "agent": "system_timeout",
+            "timestamp": datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        with st.chat_message("assistant"):
+            error_msg = f"❌ **Error del sistema:** {str(e)}"
+            st.error(error_msg)
+        
+        st.session_state.chat_history.append({
+            "role": "assistant",
+            "content": error_msg,
+            "agent": "system_error",
+            "timestamp": datetime.now().isoformat()
+        })
+    
+    # ✅ AÑADIR - Auto-scroll a datos sintéticos si se generaron
+    if result.get('has_synthetic_data'):
+        st.rerun()
 
+# ✅ AÑADIR - JavaScript para auto-scroll mejorado
+st.markdown("""
+<script>
+// Auto-scroll mejorado para chat
+function autoScrollToBottom() {
+    const messages = document.querySelectorAll('.stChatMessage');
+    if (messages.length > 0) {
+        const lastMessage = messages[messages.length - 1];
+        setTimeout(() => {
+            lastMessage.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center'
+            });
+        }, 100);
+    }
+}
+
+// Ejecutar scroll al cargar la página
+document.addEventListener('DOMContentLoaded', function() {
+    autoScrollToBottom();
+    
+    // Dar foco al input
+    setTimeout(() => {
+        const chatInput = document.querySelector('.stChatInput textarea');
+        if (chatInput) chatInput.focus();
+    }, 500);
+});
+
+// Observar cambios en los mensajes del chat
+const chatObserver = new MutationObserver((mutations) => {
+    let shouldScroll = false;
+    
+    mutations.forEach((mutation) => {
+        if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+            const addedNodes = Array.from(mutation.addedNodes);
+            // Verificar si se agregó un mensaje de chat
+            const hasChatMessage = addedNodes.some(node => 
+                node.nodeType === 1 && 
+                node.classList && 
+                node.classList.contains('stChatMessage')
+            );
+            if (hasChatMessage) {
+                shouldScroll = true;
+            }
+        }
+    });
+    
+    if (shouldScroll) {
+        autoScrollToBottom();
+    }
+});
+
+// Iniciar observación del contenedor de mensajes
+const chatContainer = document.querySelector('.main');
+if (chatContainer) {
+    chatObserver.observe(chatContainer, {
+        childList: true,
+        subtree: true
+    });
+}
+
+// Manejar botón de enviar con anti-rebote
+let canSend = true;
+document.addEventListener('click', function(e) {
+    if (e.target.matches('.stChatInput button[kind="primary"]') && !canSend) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+    } else if (e.target.matches('.stChatInput button[kind="primary"]')) {
+        canSend = false;
+        setTimeout(() => { canSend = true; }, 1500);
+    }
+});
+
+// Desactivar temporalmente el watcher de Streamlit cuando ocurra un error
+window.addEventListener('error', function(e) {
+    if (e.message.includes('no running event loop') || 
+        e.message.includes('torch.classes') ||
+        e.message.includes('RuntimeError')) {
+        console.warn('Streamlit watcher error interceptado:', e.message);
+        // Intentar prevenir que el error detenga la ejecución
+        e.preventDefault();
+        return true;
+    }
+});
+</script>
+""", unsafe_allow_html=True)
 # Sidebar minimalista (colapsado por defecto)
 with st.sidebar:
     st.markdown("### 🛠️ Herramientas")
@@ -1097,27 +1280,3 @@ with st.sidebar:
     # Footer
     st.markdown("---")
     st.caption("Powered by AI + LangChain")
-
-# JavaScript para mejorar la experiencia del usuario
-st.markdown("""
-<script>
-// Auto-focus en el input
-document.addEventListener('DOMContentLoaded', function() {
-    const chatInput = document.querySelector('.stChatInput textarea');
-    if (chatInput) {
-        chatInput.focus();
-    }
-});
-
-// Permitir envío con Shift+Enter
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter' && e.shiftKey) {
-        e.preventDefault();
-        const sendButton = document.querySelector('.stChatInput button');
-        if (sendButton) {
-            sendButton.click();
-        }
-    }
-});
-</script>
-""", unsafe_allow_html=True)
