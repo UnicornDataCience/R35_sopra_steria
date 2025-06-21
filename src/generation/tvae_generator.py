@@ -1,6 +1,9 @@
 import pandas as pd
 from sdv.single_table import TVAESynthesizer
 from sdv.metadata import Metadata
+import os
+
+script_dir = os.path.dirname(__file__)
 
 def generate_synthetic_data_tvae(real_df, sample_size=10):
     ''' 
@@ -74,10 +77,10 @@ def generate_synthetic_data_tvae(real_df, sample_size=10):
     metadata.update_column(
         column_name='PATIENT ID',
         sdtype='id',
-        regex_format='SYN-[0-9]{4}')
+        regex_format='SYN-[1-9]{4}')
 
     metadata.validate()  # Verifica integridad de metadatos
-    metadata.save_to_json('metadata_tvae.json')
+    metadata.save_to_json(os.path.abspath(os.path.join(script_dir, '..', '..', 'src', 'generation', 'metadata_tvae.json')))
 
     synth = TVAESynthesizer(metadata) # Crea un sintetizador de copula gaussiana
     synth.fit(real_df) # Ajusta el sintetizador a los datos reales
@@ -88,7 +91,7 @@ if __name__ == "__main__":
     import os
 
     script_dir = os.path.dirname(__file__)
-    archivo_csv = os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'real', 'df_final.csv'))
+    archivo_csv = os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'real', 'df_final_v2.csv'))
     sample_size = 1000
     # Llama a la función y guarda el resultado
     datos_sinteticos = generate_synthetic_data_tvae(archivo_csv, sample_size)

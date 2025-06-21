@@ -1,11 +1,10 @@
 {
     "tables": {
         "my_table_tvae": {
-            "primary_key": "PATIENT ID",
             "columns": {
                 "PATIENT ID": {
                     "sdtype": "id",
-                    "regex_format": "SYN-[0-9]{4}"
+                    "regex_format": "SYN-[1-9]{4}"
                 },
                 "EDAD/AGE": {
                     "sdtype": "numerical"
@@ -34,7 +33,8 @@
                 "MOTIVO_ALTA/DESTINY_DISCHARGE_ING": {
                     "sdtype": "categorical"
                 }
-            }
+            },
+            "primary_key": "PATIENT ID"
         }
     },
     "relationships": [],
