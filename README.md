@@ -1,6 +1,3 @@
-
-Workspace: Collecting workspace information# Patientia - Generador de Historias Clínicas Sintéticas
-
 ## Descripción
 
 **Patientia** es una herramienta avanzada para la generación de datos sintéticos en el ámbito de la salud, especialmente diseñada para crear historias clínicas artificiales que mantienen las características estadísticas y clínicas de los datos reales sin comprometer la privacidad de los pacientes.
@@ -149,56 +146,9 @@ La arquitectura se basa en agentes especializados con responsabilidades específ
 
 Utilizamos Streamlit para crear una interfaz intuitiva que permite a usuarios sin conocimientos técnicos interactuar con el sistema a través de comandos en lenguaje natural y visualizaciones interactivas.
 
-## Ejemplos de Uso
-
-### Ejemplo 1: Generar cohorte de pacientes COVID-19
-
-```python
-from src.generation.sdv_generator import SDVGenerator
-import pandas as pd
-
-# Cargar datos reales
-real_data = pd.read_csv("data/real/df_final.csv")
-
-# Configurar generador
-generator = SDVGenerator()
-
-# Generar datos sintéticos
-synthetic_data = generator.generate(real_data, num_samples=500)
-
-# Guardar resultados
-synthetic_data.to_csv("data/synthetic/pacientes_covid_sinteticos.csv", index=False)
-
-# Obtener score de calidad
-quality_score = generator.get_quality_score()
-print(f"Calidad de los datos generados: {quality_score:.2%}")
-```
-
-### Ejemplo 2: Validar coherencia médica
-
-```python
-from src.validation.medical_validator import MedicalValidator
-import pandas as pd
-
-# Cargar datos sintéticos
-synthetic_data = pd.read_csv("data/synthetic/datos_sinteticos.csv")
-
-# Inicializar validador
-validator = MedicalValidator()
-
-# Validar coherencia médica
-validation_results = validator.validate(synthetic_data)
-
-# Ver inconsistencias detectadas
-validation_results.summary()
-```
-
 ## Soporte y Mantenimiento
 
-Para obtener ayuda con Patientia:
-
 - **Problemas y sugerencias**: Abrir un issue en el repositorio de GitHub
-- **Contacto**: [correo_de_contacto@ejemplo.com]
 - **Documentación**: Ver carpeta docs para guías detalladas
 
 ## Licencia
