@@ -4,8 +4,8 @@ from jsonschema.exceptions import ValidationError
 import os
 
 script_dir = os.getcwd()
-CSV_PATH = os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_sdv.json'))
-CSV_PATH_2 = os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_tvae.json'))
+JSON_PATH = os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_sdv.json'))
+JSON_PATH_2 = os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_tvae.json'))
 
 
 pacient_schema = {
@@ -47,8 +47,10 @@ def validate_json(pacient_data):
         print(f"❌ El dato con ID '{pacient_data.get('PATIENT ID')}' es INVÁLIDO.")
         print(f"   Error: {e.message}")
 
-def procesar_archivo_jsonl(nombre_archivo):
+def procesar_archivo_json(nombre_archivo):
+    log_lines = []
     print(f"Procesando el archivo: {nombre_archivo}\n")
+    
     try:
         with open(nombre_archivo, 'r', encoding='utf-8') as f:
             for numero_linea, linea in enumerate(f, 1):
@@ -59,18 +61,56 @@ def procesar_archivo_jsonl(nombre_archivo):
                 try:
                     # Decodificar el JSON de la línea actual
                     datos_paciente = json.loads(linea)
-                    # Validar el objeto JSON decodificado
-                    validate_json(datos_paciente)
+                    # Validar el objeto JSON decodificado y capturar warnings
+                    warnings = validate_json(datos_paciente)
+                    # Guardar resultados en log
+                    log_entry = f"Línea {numero_linea}: {warnings}"
+                    log_lines.append(log_entry)
+                    print(log_entry)
+                    
                 except json.JSONDecodeError as e:
                     # Este error ocurrirá si una línea no es un JSON válido
-                    print(f"❌ Error al decodificar JSON en la línea {numero_linea}: {e}")
+                    error_msg = f"❌ Error al decodificar JSON en la línea {numero_linea}: {e}"
+                    print(error_msg)
+                    log_lines.append(error_msg)
                 
                 print("-" * 20)
 
-    except FileNotFoundError:
-        print(f"Error: El archivo '{nombre_archivo}' no fue encontrado.")
+        # Generar nombre de log único
+        base_name = 'log_json_schema.txt'
+        log_name = base_name
+        count = 1
+        while os.path.exists(log_name):
+            log_name = f"log_json_schema_{count}.txt"
+            count += 1
+        
+        # Escribir el archivo log con nombre único
+        with open(log_name, 'w', encoding='utf-8') as log_file:
+            for line in log_lines:
+                log_file.write(line + '\n')
+        
+        print(f"\n✅ Log generado exitosamente en '{log_name}' con {len(log_lines)} entradas.")
 
-# --- Ejecutar el proceso ---
-# Asegúrate de que el archivo 'datos_pacientes.jsonl' existe en la misma carpeta
-procesar_archivo_jsonl(CSV_PATH)
-procesar_archivo_jsonl(CSV_PATH_2)
+    except FileNotFoundError:
+        error_msg = f"❌ Error: El archivo '{nombre_archivo}' no fue encontrado."
+        print(error_msg)
+        log_lines.append(error_msg)
+        
+        # Generar nombre de log único para errores también
+        base_name = 'log_json_schema.txt'
+        log_name = base_name
+        count = 1
+        while os.path.exists(log_name):
+            log_name = f"log_json_schema_{count}.txt"
+            count += 1
+            
+        # Crear log incluso si hay error de archivo
+        with open(log_name, 'w', encoding='utf-8') as log_file:
+            for line in log_lines:
+                log_file.write(line + '\n')
+        
+        print(f"\n✅ Log de error generado en '{log_name}'.")
+
+
+procesar_archivo_json(JSON_PATH)
+procesar_archivo_json(JSON_PATH_2)
