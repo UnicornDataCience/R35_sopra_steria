@@ -270,8 +270,8 @@ def validate_patient_case(patient):
 
 
 script_dir = os.getcwd()
-JSON_PATH = os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_sdv.json'))
-JSON_PATH_2 = os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_tvae.json'))
+JSON_PATH = os.path.abspath(os.path.join(script_dir, 'data', 'synthetic', 'datos_sinteticos_sdv.json'))
+JSON_PATH_2 = os.path.abspath(os.path.join(script_dir, 'data', 'synthetic', 'datos_sinteticos_tvae.json'))
 
 def procesar_archivo_json(nombre_archivo):
     log_lines = []
@@ -282,6 +282,33 @@ def procesar_archivo_json(nombre_archivo):
     
     print(f"Procesando el archivo: {nombre_archivo}\n")
     
+    # Función auxiliar para generar el log
+    def guardar_log():
+        # Extraer nombre base del archivo JSON (sin extensión ni ruta)
+        archivo_base = os.path.splitext(os.path.basename(nombre_archivo))[0]
+        
+        # Generar nombre de log único basado en el archivo JSON
+        base_name = f'log_clinical_rules_{archivo_base}.txt'
+        log_name = base_name
+        count = 1
+        
+        # Verificar en el directorio outputs
+        output_dir = os.path.abspath(os.path.join(script_dir, 'outputs'))
+        os.makedirs(output_dir, exist_ok=True)
+        
+        while os.path.exists(os.path.join(output_dir, log_name)):
+            log_name = f"log_clinical_rules_{archivo_base}_{count}.txt"
+            count += 1
+        
+        # Escribir el archivo log
+        log_path = os.path.join(output_dir, log_name)
+        with open(log_path, 'w', encoding='utf-8') as log_file:
+            for line in log_lines:
+                log_file.write(line + '\n')
+        
+        print(f"✅ Log guardado en '{log_path}'")
+        return log_path
+    
     try:
         with open(nombre_archivo, 'r', encoding='utf-8') as f:
             for numero_linea, linea in enumerate(f, 1):
@@ -291,11 +318,10 @@ def procesar_archivo_json(nombre_archivo):
                 try:
                     datos_paciente = json.loads(linea)
                     
-                    # --- CORRECCIÓN AQUÍ ---
-                    # 1. Captura la lista de warnings devuelta por la función.
+                    # Captura la lista de warnings devuelta por la función
                     warnings = validate_patient_case(datos_paciente)
                     
-                    # 2. Si la lista no está vacía, imprime cada warning.
+                    # Si la lista no está vacía, imprime cada warning
                     if warnings:
                         print(f"Alertas para la línea {numero_linea}:")
                         log_lines.append(f"Línea {numero_linea} - ALERTAS:")
@@ -315,40 +341,17 @@ def procesar_archivo_json(nombre_archivo):
                 
                 print("-" * 20)
 
-        # Generar nombre de log único
-        base_name = 'log_clinical_rules.txt'
-        log_name = base_name
-        count = 1
-        while os.path.exists(log_name):
-            log_name = f"log_clinical_rules_{count}.txt"
-            count += 1
-
-        # Escribir el archivo log con nombre único
-        with open(log_name, 'w', encoding='utf-8') as log_file:
-            for line in log_lines:
-                log_file.write(line + '\n')
-        
-        print(f"✅ Log guardado en '{log_name}'")
+        # Guardar log al finalizar correctamente
+        guardar_log()
 
     except FileNotFoundError:
         error_msg = f"Error: El archivo '{nombre_archivo}' no fue encontrado."
         print(error_msg)
         log_lines.append(error_msg)
         
-        # Generar nombre de log único para errores también
-        base_name = 'log_clinical_rules.txt'
-        log_name = base_name
-        count = 1
-        while os.path.exists(log_name):
-            log_name = f"log_clinical_rules_{count}.txt"
-            count += 1
-        
-        with open(log_name, 'w', encoding='utf-8') as log_file:
-            for line in log_lines:
-                log_file.write(line + '\n')
-        
-        print(f"✅ Log de error guardado en '{log_name}'")
+        # Guardar log incluso en caso de error
+        guardar_log()
 
-
+# Ejecutar para ambos archivos
 procesar_archivo_json(JSON_PATH)
 procesar_archivo_json(JSON_PATH_2)
