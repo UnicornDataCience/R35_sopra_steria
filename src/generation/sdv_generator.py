@@ -76,11 +76,10 @@ def generate_synthetic_data(real_df, sample_size=1000):
     metadata.update_column(
         column_name='PATIENT ID',
         sdtype='id',
-        regex_format='SYN-1[0-9]{3}')
-    
+        regex_format= r'SYN_^[1-9][0-9]{0,3}$')
 
     metadata.validate()  # Verifica integridad de metadatos
-    metadata.save_to_json(os.path.abspath(os.path.join(script_dir, '..', '..', 'src', 'generation', 'metadata_sdv.json')))
+    metadata.save_to_json(os.path.abspath(os.path.join(script_dir, '..', '..', 'outputs', 'metadata_sdv.json')))
     synth = GaussianCopulaSynthesizer(metadata) # Crea un sintetizador de copula gaussiana
     synth.fit(real_df) # Ajusta el sintetizador a los datos reales
     return synth.sample(sample_size)
@@ -92,6 +91,6 @@ if __name__ == "__main__":
     # Llama a la función y guarda el resultado
     datos_sinteticos = generate_synthetic_data(archivo_csv, sample_size)
     print(datos_sinteticos)
-    datos_sinteticos.to_csv(os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_sdv.csv')))
+    datos_sinteticos.to_csv(os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_sdv.csv')), index=False)
     #json
     datos_sinteticos.to_json(os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_sdv.json')), orient='records', lines=True)

@@ -77,10 +77,11 @@ def generate_synthetic_data_tvae(real_df, sample_size=10):
     metadata.update_column(
         column_name='PATIENT ID',
         sdtype='id',
-        regex_format='SYN-[1-9]{4}')
+        # regex_format="SYN_^[1-9][0-9]{0,3}$ 
+        regex_format= r'SYN_^[1-9][0-9]{0,3}$')  # Formato regex para ID de paciente
 
     metadata.validate()  # Verifica integridad de metadatos
-    metadata.save_to_json(os.path.abspath(os.path.join(script_dir, '..', '..', 'src', 'generation', 'metadata_tvae.json')))
+    metadata.save_to_json(os.path.abspath(os.path.join(script_dir, '..', '..', 'outputs', 'metadata_tvae.json')))
 
     synth = TVAESynthesizer(metadata) # Crea un sintetizador de copula gaussiana
     synth.fit(real_df) # Ajusta el sintetizador a los datos reales
@@ -96,6 +97,6 @@ if __name__ == "__main__":
     # Llama a la función y guarda el resultado
     datos_sinteticos = generate_synthetic_data_tvae(archivo_csv, sample_size)
     print(datos_sinteticos)
-    datos_sinteticos.to_csv(os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_tvae.csv')))
+    datos_sinteticos.to_csv(os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_tvae.csv')), index=False)
     #json
     datos_sinteticos.to_json(os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_tvae.json')), orient='records', lines=True)
