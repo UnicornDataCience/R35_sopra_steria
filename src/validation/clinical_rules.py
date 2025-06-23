@@ -270,8 +270,9 @@ def validate_patient_case(patient):
 
 
 script_dir = os.getcwd()
-JSON_PATH = os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_sdv.json'))
-JSON_PATH_2 = os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_tvae.json'))
+JSON_PATH_SDV = os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_sdv.json'))
+JSON_PATH_TVAE = os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_tvae.json'))
+JSON_PATH_CTGAN = os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_ctgan.json'))
 
 def procesar_archivo_json(nombre_archivo):
     log_lines = []
@@ -287,43 +288,34 @@ def procesar_archivo_json(nombre_archivo):
             for numero_linea, linea in enumerate(f, 1):
                 if not linea.strip():
                     continue
-                
                 try:
                     datos_paciente = json.loads(linea)
-                    
-                    # --- CORRECCIÓN AQUÍ ---
-                    # 1. Captura la lista de warnings devuelta por la función.
                     warnings = validate_patient_case(datos_paciente)
-                    
-                    # 2. Si la lista no está vacía, imprime cada warning.
                     if warnings:
                         print(f"Alertas para la línea {numero_linea}:")
                         log_lines.append(f"Línea {numero_linea} - ALERTAS:")
-                        
                         for warning in warnings:
                             print(f"  - {warning}")
                             log_lines.append(f"  {warning}")
-                        
-                        log_lines.append("")  # Línea en blanco para separar
+                        log_lines.append("")
                     else:
                         log_lines.append(f"Línea {numero_linea}: Sin alertas")
-
                 except json.JSONDecodeError as e:
                     error_msg = f"❌ Error al decodificar JSON en la línea {numero_linea}: {e}"
                     print(error_msg)
                     log_lines.append(error_msg)
-                
                 print("-" * 20)
 
-        # Generar nombre de log único
+        # Generar nombre de log único en la carpeta logs
+        logs_dir = os.path.join(os.getcwd(), 'logs')
+        os.makedirs(logs_dir, exist_ok=True)
         base_name = 'log_clinical_rules.txt'
-        log_name = base_name
+        log_name = os.path.join(logs_dir, base_name)
         count = 1
         while os.path.exists(log_name):
-            log_name = f"log_clinical_rules_{count}.txt"
+            log_name = os.path.join(logs_dir, f"log_clinical_rules_{count}.txt")
             count += 1
 
-        # Escribir el archivo log con nombre único
         with open(log_name, 'w', encoding='utf-8') as log_file:
             for line in log_lines:
                 log_file.write(line + '\n')
@@ -335,12 +327,14 @@ def procesar_archivo_json(nombre_archivo):
         print(error_msg)
         log_lines.append(error_msg)
         
-        # Generar nombre de log único para errores también
+        # Generar nombre de log único para errores también en la carpeta logs
+        logs_dir = os.path.join(os.getcwd(), 'logs')
+        os.makedirs(logs_dir, exist_ok=True)
         base_name = 'log_clinical_rules.txt'
-        log_name = base_name
+        log_name = os.path.join(logs_dir, base_name)
         count = 1
         while os.path.exists(log_name):
-            log_name = f"log_clinical_rules_{count}.txt"
+            log_name = os.path.join(logs_dir, f"log_clinical_rules_{count}.txt")
             count += 1
         
         with open(log_name, 'w', encoding='utf-8') as log_file:
@@ -350,5 +344,6 @@ def procesar_archivo_json(nombre_archivo):
         print(f"✅ Log de error guardado en '{log_name}'")
 
 
-procesar_archivo_json(JSON_PATH)
-procesar_archivo_json(JSON_PATH_2)
+procesar_archivo_json(JSON_PATH_SDV)
+procesar_archivo_json(JSON_PATH_TVAE)
+procesar_archivo_json(JSON_PATH_CTGAN)

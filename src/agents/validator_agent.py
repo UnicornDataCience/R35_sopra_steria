@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 from langchain.tools import BaseTool
 from .base_agent import BaseLLMAgent, BaseAgentConfig
+from src.validation.clinical_rules import validate_patient_case
+from src.validation.json_schema import validate_json, pacient_schema
 
 class MedicalValidationTool(BaseTool):
     """Tool para validación médica de datos sintéticos"""
@@ -170,6 +172,43 @@ Por favor:
             covid_cases = synthetic_data['DIAG ING/INPAT'].str.contains('COVID', case=False, na=False)
             if covid_cases.any():
                 results['covid_protocols'] = 0.95  # Asumiendo alta adherencia
+        
+        # Validación de esquema JSON y reglas clínicas
+        schema_errors = 0
+        clinical_alerts = []
+        diagnosis_treatment_issues = 0
+        drug_incompatibilities = 0
+
+        for idx, row in synthetic_data.iterrows():
+            record = row.to_dict()
+            # Validación de esquema JSON
+            try:
+                validate_json(record, pacient_schema)
+            except Exception as e:
+                schema_errors += 1
+                clinical_alerts.append(f"Fila {idx}: Error de esquema JSON: {str(e)}")
+            # Validación clínica
+            try:
+                alerts = validate_patient_case(record)
+                if alerts:
+                    for alert in alerts:
+                        clinical_alerts.append(f"Fila {idx}: {alert}")
+                        if "tratamiento" in alert.lower():
+                            diagnosis_treatment_issues += 1
+                        if "medicamento" in alert.lower() or "compatibilidad" in alert.lower():
+                            drug_incompatibilities += 1
+            except Exception as e:
+                clinical_alerts.append(f"Fila {idx}: Error en reglas clínicas: {str(e)}")
+
+        # Al final:
+        results['diagnosis_treatment_consistency'] = 1.0 - (diagnosis_treatment_issues / len(synthetic_data))
+        results['drug_compatibility'] = 1.0 - (drug_incompatibilities / len(synthetic_data))
+
+        # Puedes ponderar los errores en el score general
+        if schema_errors > 0:
+            results['issues'].append(f"{schema_errors} registros con errores de esquema JSON")
+        if clinical_alerts:
+            results['issues'].extend(clinical_alerts)
         
         # Calcular scores generales
         results['clinical_coherence'] = np.mean([

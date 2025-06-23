@@ -1,25 +1,7 @@
 from typing import Dict, Any, Optional
 import pandas as pd
-from langchain.tools import BaseTool
-from pydantic import BaseModel, Field
 from .base_agent import BaseLLMAgent, BaseAgentConfig
 from ..extraction.data_extractor import DataExtractor
-
-
-class DataAnalysisTool(BaseTool):
-    """Tool para análisis de datos clínicos"""
-    name: str = "analyze_clinical_data"
-    description: str = "Analiza datasets clínicos y extrae patrones médicos relevantes"
-    
-    def _run(self, dataset_info: str) -> str:
-        """Ejecuta análisis de datos"""
-        try:
-            # Quitar la línea problemática del __init__
-            # self.extractor = DataExtractor()  # ❌ ELIMINAR ESTA LÍNEA
-            
-            return "Análisis completado: Patrones clínicos extraídos exitosamente"
-        except Exception as e:
-            return f"Error en análisis: {str(e)}"
 
 class ClinicalAnalyzerAgent(BaseLLMAgent):
     """Agente especializado en análisis de datos clínicos"""
@@ -58,42 +40,26 @@ class ClinicalAnalyzerAgent(BaseLLMAgent):
 Responde de manera profesional, concisa y orientada a la acción. Siempre pregunta si se necesita análisis adicional.""",
             temperature=0.1
         )
-        
-        tools = [DataAnalysisTool()]
-        super().__init__(config, tools)
+        super().__init__(config)
     
     async def analyze_dataset(self, dataframe: pd.DataFrame, context: Dict[str, Any] = None) -> Dict[str, Any]:
         """Analiza un dataset específico"""
-        
-        # Preparar información del dataset para el LLM
-        dataset_info = {
-            "rows": len(dataframe),
-            "columns": len(dataframe.columns),
-            "column_names": list(dataframe.columns),
-            "dtypes": dict(dataframe.dtypes.astype(str)),
-            "missing_data": dataframe.isnull().sum().to_dict(),
-            "sample_data": dataframe.head(3).to_dict()
-        }
-        
+
+        # 1. Extraer patrones reales con DataExtractor
+        extractor = DataExtractor()
+        extraction_results = extractor.extract_patterns(dataframe)
+
+        # 2. Preparar prompt para el LLM usando los resultados reales
         prompt = f"""Analiza este dataset clínico:
 
-**Información del Dataset:**
-- Registros: {dataset_info['rows']}
-- Variables: {dataset_info['columns']}
-- Columnas: {dataset_info['column_names']}
+**Patrones clínicos extraídos automáticamente:**
+{extraction_results['clinical_patterns']}
 
-**Datos faltantes por columna:**
-{dataset_info['missing_data']}
+**Estadísticas generales:**
+{extraction_results['statistics']}
 
-**Muestra de datos:**
-{dataset_info['sample_data']}
+Por favor interpreta estos hallazgos, identifica limitaciones y sugiere próximos pasos para generación sintética.
 
-Por favor analiza y extrae:
-1. Patrones clínicos relevantes
-2. Calidad de los datos
-3. Distribuciones importantes
-4. Recomendaciones para generación sintética
-
-Contexto adicional: {context}"""
-
+Contexto adicional: {context}
+"""
         return await self.process(prompt, context)
