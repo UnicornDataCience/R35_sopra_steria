@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import os
+from datetime import datetime
 
 script_dir = os.path.dirname(__file__)
 CSV_REAL_PATH = os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'real', 'df_final_v2.csv'))
@@ -49,13 +50,13 @@ def simulate_disease_progression(lab_value, improvement=True, param_type='genera
     
     elif param_type == 'sat':
         if improvement:
-            # Si hay mejora, saturación no puede bajar de 90%
-            new_value = max(90.0, new_value)
+            # Si hay mejora, saturación no puede bajar de 95%
+            new_value = max(95.0, new_value)
             # Límite superior fisiológico de saturación
             new_value = min(100.0, new_value)
         else:
-            # Si no hay mejora, saturación puede bajar pero no menos de 70%
-            new_value = max(70.0, new_value)
+            # Si no hay mejora, saturación puede bajar pero no menos de 89%
+            new_value = max(94.0, new_value)
             new_value = min(100.0, new_value)
     
     elif param_type == 'pcr':
@@ -76,42 +77,54 @@ def simulate_progression_for_patient(patient_id):
     Reglas:
     - PCR < 10.0: mejora (improvement = True)
     - PCR >= 10.0: no mejora (improvement = False)
-    - Temperatura: mejora >=36.5°C, no mejora <=45°C
-    - Saturación: mejora >=90%, no mejora >=70%
+    - Saturación: diversos umbrales determinan la gravedad
     
     params:
     - patient_id: ID del paciente
     
     return:
-    - None, pero imprime el resultado de la simulación
+    - Objeto JSON con el resultado de la simulación
     '''
     patient_data = df_real[df_real['PATIENT ID'] == patient_id]
     if patient_data.empty:
-        print(f"No se encontraron datos para el paciente con ID {patient_id}.")
-        return
+        return {"error": f"No se encontraron datos para el paciente con ID {patient_id}."}
     
     # Obtener valores iniciales
-    temp = patient_data['TEMP_ING/INPAT'].values[0]
     sat = patient_data['SAT_02_ING/INPAT'].values[0]
     pcr = patient_data['RESULTADO/VAL_RESULT'].values[0]
-    
-    # REGLA CORREGIDA: PCR < 10.0 = mejora, PCR >= 10.0 = no mejora
-    improvement = pcr < 10.0
-    
-    # Simular progresión con reglas específicas
-    new_temp = simulate_disease_progression(temp, improvement, 'temp')
+    # generar una fecha aleatoria comprendida entre Enero y Diciembre de 2024
+    date = datetime(2024, np.random.randint(1, 13), np.random.randint(1, 29)).strftime('%Y-%m-%d')
+    new_pcr = simulate_disease_progression(pcr,'pcr')
+    improvement = new_pcr < 10.0
     new_sat = simulate_disease_progression(sat, improvement, 'sat')
-    new_pcr = simulate_disease_progression(pcr, improvement, 'pcr')
-    
-    # Mostrar resultados
-    status = "MEJORANDO" if improvement else "SIN MEJORA/EMPEORANDO"
-    print(f"Paciente {patient_id} - Estado: {status}")
-    print(f"  PCR inicial: {pcr:.2f} mg/L")
-    print(f"  Temperatura: {temp:.2f} → {new_temp:.2f} °C")
-    print(f"  Saturación O2: {sat:.2f} → {new_sat:.2f} %")
-    print(f"  PCR: {pcr:.2f} → {new_pcr:.2f} mg/L")
+
+    # Crear la estructura base del visit
+    visit = {
+        'date': date,
+        'labs': {
+            "PCR": float(round(new_pcr, 2)),
+            "SAT_O2": float(round(new_sat, 2))
+        }
+    }
+
+    if improvement and new_sat >= 94.0:
+        visit['syntoms'] = ["Estabilizado"]
+    elif new_sat >= 94.0:
+        visit['syntoms'] = ["Fiebre, tos sin disnea, cefalea, mialgias, náuseas, vómitos, diarrea"]
+        visit['acciones'] = ["Descanso en cama", "Hidratación oral", "Paracetamol 500mg cada 8 horas", "Aislamiento", "Uso de mascarilla"]
+    elif new_sat >= 90.0:
+        new_sat = simulate_disease_progression(sat, improvement, 'sat')
+        visit['syntoms'] = ["Agotamiento, astenia, tos, disnea y signos de afectación pulmonar"]
+        visit['acciones'] = ["Administración de oxígeno suplementario", "Ventilación no invasiva", "Remdesivir", "Dexametasona", "Inmunomoduladores"]
+    elif new_sat < 90.0 and new_pcr >= 15.0:
+        visit['syntoms'] = ["Estado grave con insuficiencia respiratoria, hipoxemia, alteración de funciones vitales y manifestaciones extrapulmonares"]
+        visit['acciones'] = ["Ventilación mecánica invasiva", "OMEC", "Manejo en unidad de cuidados intensivos en cubículos con presión negativa"]
+    else:  # new_sat < 90.0
+        visit['syntoms'] = ["Agotamiento, astenia, tos, disnea y signos de afectación pulmonar"]
+        visit['acciones'] = ["Administración de oxígeno suplementario", "Ventilación no invasiva", "Remdesivir", "Dexametasona", "Inmunomoduladores"]
+    return print([visit])
 
 # Ejecutar simulación
-simulate_progression_for_patient(30)
+simulate_progression_for_patient(5)
 
     
