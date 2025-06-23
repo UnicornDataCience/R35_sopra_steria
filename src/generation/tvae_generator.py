@@ -79,7 +79,8 @@ def generate_synthetic_data_tvae(real_df, sample_size=10):
     metadata.update_column(
         column_name='PATIENT ID',
         sdtype='id',
-        regex_format='SYN-[1-9]{4}')
+        # regex_format="SYN_^[1-9][0-9]{0,3}$ 
+        regex_format= r'SYN_^[1-9][0-9]{0,3}$')  # Formato regex para ID de paciente
 
     metadata.validate()  # Verifica integridad de metadatos
     # Usar nombre único para metadata temporal y eliminar tras uso

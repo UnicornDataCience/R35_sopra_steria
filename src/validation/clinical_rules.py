@@ -283,6 +283,33 @@ def procesar_archivo_json(nombre_archivo):
     
     print(f"Procesando el archivo: {nombre_archivo}\n")
     
+    # Función auxiliar para generar el log
+    def guardar_log():
+        # Extraer nombre base del archivo JSON (sin extensión ni ruta)
+        archivo_base = os.path.splitext(os.path.basename(nombre_archivo))[0]
+        
+        # Generar nombre de log único basado en el archivo JSON
+        base_name = f'log_clinical_rules_{archivo_base}.txt'
+        log_name = base_name
+        count = 1
+        
+        # Verificar en el directorio outputs
+        output_dir = os.path.abspath(os.path.join(script_dir, 'outputs'))
+        os.makedirs(output_dir, exist_ok=True)
+        
+        while os.path.exists(os.path.join(output_dir, log_name)):
+            log_name = f"log_clinical_rules_{archivo_base}_{count}.txt"
+            count += 1
+        
+        # Escribir el archivo log
+        log_path = os.path.join(output_dir, log_name)
+        with open(log_path, 'w', encoding='utf-8') as log_file:
+            for line in log_lines:
+                log_file.write(line + '\n')
+        
+        print(f"✅ Log guardado en '{log_path}'")
+        return log_path
+    
     try:
         with open(nombre_archivo, 'r', encoding='utf-8') as f:
             for numero_linea, linea in enumerate(f, 1):
