@@ -17,9 +17,9 @@ pacient_schema = {
         "DIAG ING/INPAT": {"type": "string"},
         "FARMACO/DRUG_NOMBRE_COMERCIAL/COMERCIAL_NAME": {"type": "string"},
         "UCI_DIAS/ICU_DAYS": {"type": "number", "minimum": 1},
-        "TEMP_ING/INPAT": {"type": "float", "minimum": 30.0, "maximum": 42.0},
-        "SAT_02_ING/INPAT": {"type": "number", "minimum": 1, "maximum": 100},
-        "RESULTADO/VAL_RESULT": {"type": "string"},
+        "TEMP_ING/INPAT": {"type": "number"},
+        "SAT_02_ING/INPAT": {"type": "number"},
+        "RESULTADO/VAL_RESULT": {"type": "number"},
         "MOTIVO_ALTA/DESTINY_DISCHARGE_ING": {"type": "string"}
     },
     "required": ["PATIENT ID",
@@ -41,7 +41,7 @@ def validate_json(pacient_data):
     retorna True. Si no es válido, lanza una excepción de validación.
     '''
     try:
-        validate(instance=pacient_data, schema=pacient_data)
+        validate(instance=pacient_data, schema=pacient_schema)
         print(f"✔️  El dato con ID '{pacient_data.get('PATIENT ID')}' es VÁLIDO.")
     except ValidationError as e:
         print(f"❌ El dato con ID '{pacient_data.get('PATIENT ID')}' es INVÁLIDO.")
