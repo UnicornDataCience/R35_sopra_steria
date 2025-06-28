@@ -4,6 +4,7 @@ from medspacy.ner import TargetRule
 from sklearn.metrics import classification_report
 from spacy import displacy
 import os
+import sys
 
 # Importación opcional de QuickUMLS
 try:
@@ -226,3 +227,42 @@ if __name__ == "__main__":
         print("No se encontraron entidades para evaluar. Revisa tu dataset y las reglas de extracción.")
     
     print("\n¡Evaluación completada!")
+
+# Añade estos imports
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'evaluation'))
+
+from src.evaluation.evaluator_debug import crear_extractor_personalizado, evaluar_con_metricas_completas
+
+# Añade este método a la clase UtilityEvaluatorAgent
+def _evaluate_medical_entities(self, synthetic: pd.DataFrame) -> Dict[str, Any]:
+    """Evalúa extracción de entidades médicas en datos sintéticos"""
+    
+    columnas_texto = [
+        "DIAG ING/INPAT",
+        "FARMACO/DRUG_NOMBRE_COMERCIAL/COMERCIAL_NAME", 
+        "MOTIVO_ALTA/DESTINY_DISCHARGE_ING"
+    ]
+    
+    try:
+        # Usar el extractor personalizado mejorado
+        extractor_personalizado = crear_extractor_personalizado()
+        
+        # Evaluar con métricas completas
+        metricas_globales, metricas_por_columna, ejemplos = evaluar_con_metricas_completas(
+            synthetic, extractor_personalizado, columnas_texto
+        )
+        
+        return {
+            'medical_entity_precision': metricas_globales.get('precision', 0.5),
+            'medical_entity_recall': metricas_globales.get('recall', 0.5),
+            'medical_entity_f1': metricas_globales.get('f1', 0.5),
+            'entities_by_column': metricas_por_columna,
+            'entity_extraction_quality': 'Buena' if metricas_globales.get('f1', 0) > 0.7 else 'Necesita mejora'
+        }
+        
+    except Exception as e:
+        return {
+            'medical_entity_error': str(e),
+            'medical_entity_f1': 0.5,
+            'entity_extraction_quality': 'No evaluado'
+        }

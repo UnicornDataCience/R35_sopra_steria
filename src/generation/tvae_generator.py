@@ -80,7 +80,7 @@ def generate_synthetic_data_tvae(real_df, sample_size=10):
         column_name='PATIENT ID',
         sdtype='id',
         # regex_format="SYN_^[1-9][0-9]{0,3}$ 
-        regex_format= r'SYN_^[1-9][0-9]{0,3}$')  # Formato regex para ID de paciente
+        regex_format= r'SYN-[0-9]{4}')  # Formato regex para ID de paciente
 
     metadata.validate()  # Verifica integridad de metadatos
     # Usar nombre único para metadata temporal y eliminar tras uso
@@ -169,6 +169,38 @@ class TVAEGenerator:
                 os.remove(tmp_json)
         return result
 
+# NUEVO: Guardar JSON limpio
+def save_clean_json(df, json_path):
+    """Guarda DataFrame como JSON limpio sin valores None"""
+    # Importar la función de limpieza
+    import sys
+    import os
+    utils_path = os.path.join(os.path.dirname(__file__), '..', '..', 'utils')
+    sys.path.insert(0, utils_path)
+    
+    from fix_json_generators import fix_json_generation
+    return fix_json_generation(df, json_path)
+
+def save_clean_json(df, json_path):
+    """Guarda DataFrame como JSON limpio sin valores None"""
+    # Limpiar DataFrame
+    df_clean = df.copy()
+    
+    # Reemplazar NaN y None con valores apropiados
+    for col in df_clean.columns:
+        if df_clean[col].dtype == 'object':
+            df_clean[col] = df_clean[col].fillna('')
+        else:
+            df_clean[col] = df_clean[col].fillna(0)
+    
+    # Eliminar filas completamente vacías
+    df_clean = df_clean.dropna(how='all')
+    
+    # Convertir a JSON limpio
+    df_clean.to_json(json_path, orient='records', indent=2, force_ascii=False)
+    
+    return len(df_clean)
+
 if __name__ == "__main__":
     import os
     script_dir = os.path.dirname(__file__)
@@ -179,4 +211,10 @@ if __name__ == "__main__":
     datos_sinteticos = generator.generate(archivo_csv)
     print(datos_sinteticos)
     datos_sinteticos.to_csv(os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_tvae.csv')))
-    datos_sinteticos.to_json(os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_tvae.json')), orient='records', lines=True)
+    json_path = 'datos_sinteticos_tvae.json'
+    # Usar la función para guardar como JSON limpio
+    success = save_clean_json(datos_sinteticos, json_path)
+    if success:
+        print(f"✅ JSON limpio: {json_path}")
+    else:
+        print(f"❌ Error generando JSON: {json_path}")

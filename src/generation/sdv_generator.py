@@ -65,7 +65,7 @@ class SDVGenerator:
         metadata.update_column(
             column_name='PATIENT ID',
             sdtype='id',
-            regex_format='SYN-1[0-9]{3}')
+            regex_format='SYN-[0-9]{4}')
         metadata.validate()
         # Usar nombre único para metadata temporal y eliminar tras uso
         tmp_json = f"metadata_sdv_{uuid.uuid4().hex}.json"
@@ -88,4 +88,30 @@ if __name__ == "__main__":
     datos_sinteticos = generator.generate(archivo_csv)
     print(datos_sinteticos)
     datos_sinteticos.to_csv(os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_sdv.csv')))
-    datos_sinteticos.to_json(os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_sdv.json')), orient='records', lines=True)
+    # Limpiar datos antes de guardar
+    datos_sinteticos_clean = datos_sinteticos.dropna(how='all')  # Eliminar filas completamente vacías
+    datos_sinteticos_clean = datos_sinteticos_clean.fillna('')  # Llenar NaN con strings vacíos
+
+    # Guardar JSON correctamente
+    json_path = os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_sdv.json'))
+    # NUEVO: Guardar JSON limpio
+    def save_clean_json(df, json_path):
+        """Guarda DataFrame como JSON limpio sin valores None"""
+        # Importar la función de limpieza
+        import sys
+        import os
+        utils_path = os.path.join(os.path.dirname(__file__), '..', '..', 'utils')
+        sys.path.insert(0, utils_path)
+        
+        from fix_json_generators import fix_json_generation
+        return fix_json_generation(df, json_path)
+
+    # REEMPLAZAR la línea:
+    # datos_sinteticos.to_json(json_path, orient='records', lines=True)
+
+    # POR:
+    success = save_clean_json(datos_sinteticos, json_path)
+    if success:
+        print(f"✅ JSON limpio: {json_path}")
+    else:
+        print(f"❌ Error generando JSON: {json_path}")

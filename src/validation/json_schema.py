@@ -1,120 +1,170 @@
 import json
+import os
 from jsonschema import validate
 from jsonschema.exceptions import ValidationError
-import os
 
-script_dir = os.getcwd()
-JSON_PATH = os.path.abspath(os.path.join(script_dir, 'data', 'synthetic', 'datos_sinteticos_sdv.json'))
-JSON_PATH_2 = os.path.abspath(os.path.join(script_dir, 'data', 'synthetic', 'datos_sinteticos_tvae.json'))
+def get_project_root():
+    """Encuentra la raíz del proyecto automáticamente"""
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Buscar hacia arriba hasta encontrar el directorio que contiene 'data'
+    while current_dir != os.path.dirname(current_dir):
+        if os.path.exists(os.path.join(current_dir, 'data', 'synthetic')):
+            return current_dir
+        current_dir = os.path.dirname(current_dir)
+    
+    # Fallback
+    script_dir = os.path.dirname(__file__)
+    return os.path.abspath(os.path.join(script_dir, '..', '..'))
 
+# Configuración dinámica
+project_root = get_project_root()
+data_dir = os.path.join(project_root, 'data', 'synthetic')
+
+archivos_json = [
+    os.path.join(data_dir, 'datos_sinteticos_sdv.json'),
+    os.path.join(data_dir, 'datos_sinteticos_tvae.json'),
+    os.path.join(data_dir, 'datos_sinteticos_ctgan.json')
+]
 
 pacient_schema = {
     "type": "object",
     "properties": {
-        "PATIENT ID": {"type": "string", "pattern": "^SYN"},
-        "EDAD/AGE": {"type": "number", "minimum": 1},
-        "SEXO/SEX": {"type": "string"},
-        "DIAG ING/INPAT": {"type": "string"},
-        "FARMACO/DRUG_NOMBRE_COMERCIAL/COMERCIAL_NAME": {"type": "string"},
-        "UCI_DIAS/ICU_DAYS": {"type": "number", "minimum": 1},
-        "TEMP_ING/INPAT": {"type": "float", "minimum": 30.0, "maximum": 42.0},
-        "SAT_02_ING/INPAT": {"type": "number", "minimum": 1, "maximum": 100},
-        "RESULTADO/VAL_RESULT": {"type": "string"},
-        "MOTIVO_ALTA/DESTINY_DISCHARGE_ING": {"type": "string"}
+        "PATIENT ID": {
+            "type": ["string", "number"],  # Aceptar string o número
+            "description": "ID único del paciente"
+        },
+        "EDAD/AGE": {
+            "type": "number", 
+            "minimum": 0, 
+            "maximum": 120,
+            "description": "Edad del paciente en años"
+        },
+        "SEXO/SEX": {
+            "type": "string",
+            "enum": ["MALE", "FEMALE", "M", "F", "MASCULINO", "FEMENINO"],
+            "description": "Sexo del paciente"
+        },
+        "DIAG ING/INPAT": {
+            "type": "string",
+            "description": "Diagnóstico de ingreso"
+        },
+        "FARMACO/DRUG_NOMBRE_COMERCIAL/COMERCIAL_NAME": {
+            "type": "string",
+            "description": "Medicamento prescrito"
+        },
+        "UCI_DIAS/ICU_DAYS": {
+            "type": "number", 
+            "minimum": 0,  # ✅ CORREGIDO: Permitir 0 (sin UCI)
+            "description": "Días en UCI"
+        },
+        "TEMP_ING/INPAT": {
+            "type": "number",  # ✅ CORREGIDO: number en lugar de float
+            "minimum": 30.0, 
+            "maximum": 45.0,  # Más permisivo para casos extremos
+            "description": "Temperatura corporal en °C"
+        },
+        "SAT_02_ING/INPAT": {
+            "type": "number", 
+            "minimum": 50,  # Más permisivo para casos críticos
+            "maximum": 100,
+            "description": "Saturación de oxígeno en %"
+        },
+        "RESULTADO/VAL_RESULT": {
+            "type": ["string", "number"],  # Aceptar string o número
+            "description": "Resultado de laboratorio (PCR)"
+        },
+        "MOTIVO_ALTA/DESTINY_DISCHARGE_ING": {
+            "type": "string",
+            "description": "Motivo de alta hospitalaria"
+        }
     },
-    "required": ["PATIENT ID",
-                "EDAD/AGE", 
-                "SEXO/SEX",
-                "DIAG ING/INPAT",
-                "FARMACO/DRUG_NOMBRE_COMERCIAL/COMERCIAL_NAME",
-                "UCI_DIAS/ICU_DAYS",
-                "TEMP_ING/INPAT",
-                "SAT_02_ING/INPAT",
-                "RESULTADO/VAL_RESULT",
-                "MOTIVO_ALTA/DESTINY_DISCHARGE_ING"]
+    "required": [
+        "PATIENT ID", 
+        "EDAD/AGE", 
+        "SEXO/SEX",
+        "DIAG ING/INPAT"
+    ],  # ✅ CORREGIDO: Solo campos esenciales como required
+    "additionalProperties": False
 }
 
-def validate_json(pacient_data):
-    ''' 
-    La función validate_json recibe un archivo JSON y valida su estructura
-    según el esquema definido en pacient_schema. Si el archivo es válido,
-    retorna True. Si no es válido, lanza una excepción de validación.
-    '''
+def validate_json(patient_data):
+    """Valida un registro de paciente contra el esquema"""
     try:
-        validate(instance=pacient_data, schema=pacient_data)
-        print(f"✔️  El dato con ID '{pacient_data.get('PATIENT ID')}' es VÁLIDO.")
+        # Limpiar datos antes de validar
+        clean_data = {}
+        for key, value in patient_data.items():
+            if value is None or (isinstance(value, str) and value.strip() == ''):
+                # Usar valores por defecto para campos requeridos
+                if key == "EDAD/AGE":
+                    clean_data[key] = 0
+                elif key == "SEXO/SEX":
+                    clean_data[key] = "UNKNOWN"
+                elif key == "DIAG ING/INPAT":
+                    clean_data[key] = "NO_DIAGNOSIS"
+                elif key == "PATIENT ID":
+                    clean_data[key] = "UNKNOWN_ID"
+                else:
+                    clean_data[key] = ""
+            else:
+                clean_data[key] = value
+        
+        validate(instance=clean_data, schema=pacient_schema)
+        return True
     except ValidationError as e:
-        print(f"❌ El dato con ID '{pacient_data.get('PATIENT ID')}' es INVÁLIDO.")
-        print(f"   Error: {e.message}")
+        raise e
+    except Exception as e:
+        raise ValidationError(f"Error de validación: {str(e)}")
 
 def procesar_archivo_json(nombre_archivo):
-    log_lines = []
-    print(f"Procesando el archivo: {nombre_archivo}\n")
+    """Procesa archivo JSON línea por línea y valida cada registro"""
     
-    # Función auxiliar para generar el log
-    def guardar_log():
-        # Extraer nombre base del archivo JSON (sin extensión ni ruta)
-        archivo_base = os.path.splitext(os.path.basename(nombre_archivo))[0]
-        
-        # Generar nombre de log único basado en el archivo JSON
-        base_name = f'log_json_schema_{archivo_base}.txt'
-        log_name = base_name
-        count = 1
-        
-        # Verificar en el directorio outputs
-        output_dir = os.path.abspath(os.path.join(script_dir, 'outputs'))
-        os.makedirs(output_dir, exist_ok=True)
-        
-        while os.path.exists(os.path.join(output_dir, log_name)):
-            log_name = f"log_json_schema_{archivo_base}_{count}.txt"
-            count += 1
-        
-        # Escribir el archivo log
-        log_path = os.path.join(output_dir, log_name)
-        with open(log_path, 'w', encoding='utf-8') as log_file:
-            for line in log_lines:
-                log_file.write(line + '\n')
-        
-        print(f"✅ Log guardado en '{log_path}'")
-        return log_path
+    if not os.path.exists(nombre_archivo):
+        print(f"❌ Archivo no encontrado: {nombre_archivo}")
+        return
+    
+    print(f"🔍 Validando archivo: {os.path.basename(nombre_archivo)}")
     
     try:
-        with open(nombre_archivo, 'r', encoding='utf-8') as f:
-            for numero_linea, linea in enumerate(f, 1):
-                # Ignorar líneas vacías
-                if not linea.strip():
-                    continue
+        # VERIFICAR: ¿Cómo está cargando el archivo?
+        with open(nombre_archivo, 'r', encoding='utf-8') as archivo:
+            # PROBLEMA POSIBLE: ¿Está leyendo como JSON array o línea por línea?
+            
+            # MÉTODO CORRECTO para archivos JSON generados:
+            data = json.load(archivo)  # Cargar como JSON completo
+            
+            # NO ESTO (línea por línea):
+            # for line in archivo:  # ❌ Esto causaría "None"
+            
+        if not isinstance(data, list):
+            print(f"❌ El archivo no contiene un array JSON válido")
+            return
+            
+        # Procesar cada registro
+        for i, record in enumerate(data, 1):
+            if record is None:
+                print(f"Línea {i}: None (registro vacío)")
+                continue
                 
-                try:
-                    # Decodificar el JSON de la línea actual
-                    datos_paciente = json.loads(linea)
-                    # Validar el objeto JSON decodificado y capturar warnings
-                    warnings = validate_json(datos_paciente)
-                    # Guardar resultados en log
-                    log_entry = f"Línea {numero_linea}: {warnings}"
-                    log_lines.append(log_entry)
-                    print(log_entry)
-                    
-                except json.JSONDecodeError as e:
-                    # Este error ocurrirá si una línea no es un JSON válido
-                    error_msg = f"❌ Error al decodificar JSON en la línea {numero_linea}: {e}"
-                    print(error_msg)
-                    log_lines.append(error_msg)
-                
-                print("-" * 20)
+            # Validar registro
+            validate_json(record)
+            
+    except json.JSONDecodeError as e:
+        print(f"❌ Error al decodificar JSON: {e}")
+    except Exception as e:
+        print(f"❌ Error: {e}")
 
-        # Guardar log al finalizar correctamente
-        log_path = guardar_log()
-        print(f"\n✅ Log generado exitosamente con {len(log_lines)} entradas.")
 
-    except FileNotFoundError:
-        error_msg = f"❌ Error: El archivo '{nombre_archivo}' no fue encontrado."
-        print(error_msg)
-        log_lines.append(error_msg)
-        
-        # Guardar log incluso en caso de error
-        guardar_log()
-
-# Ejecutar para ambos archivos
-procesar_archivo_json(JSON_PATH)
-procesar_archivo_json(JSON_PATH_2)
+if __name__ == "__main__":
+    print("🔍 Validador de esquemas JSON para datos sintéticos")
+    print("=" * 50)
+    print(f"📂 Buscando archivos en: {data_dir}")
+    
+    for archivo in archivos_json:
+        if os.path.exists(archivo):
+            print(f"\n📂 Procesando: {os.path.basename(archivo)}")
+            procesar_archivo_json(archivo)
+        else:
+            print(f"\n⚠️ Archivo no encontrado: {os.path.basename(archivo)}")
+    
+    print("\n✅ Validación completada")

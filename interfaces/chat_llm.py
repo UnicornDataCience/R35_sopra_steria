@@ -619,21 +619,14 @@ if 'orchestrator' not in st.session_state:
 # Header principal con logo integrado
 logo_path = os.path.join(project_root, "assets", "logo_patientia.png")
 if os.path.exists(logo_path):
-    # Header centrado con logo y título
-    st.markdown('<div style="display: flex; justify-content: center; align-items: center; margin: 2.5rem 0;">', unsafe_allow_html=True)
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col2:
-        # Contenedor flex para logo y título con menos espacio
-        st.markdown('<div style="display: flex; align-items: center; justify-content: center; gap: 0px;">', unsafe_allow_html=True)
-        subcol1, subcol2 = st.columns([0.3, 2])
-        with subcol1:
-            st.image(logo_path, width=70)
-        with subcol2:
-            st.markdown("""
-            <h1 style="font-size: 2.5rem; font-weight: 600; color: #1f2937; margin: 0; text-align: left; margin-left: -10px;">Patienti-IA</h1>
-            """, unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    col_left, col_logo, col_title, col_right = st.columns([5.7, 0.7, 6, 2])
+    with col_logo:
+        st.image(logo_path, width=54)
+    with col_title:
+        st.markdown(
+            "<h1 style='font-size: 2.2rem; font-weight: 600; color: #1f2937; margin: 0; display: flex; align-items: center; height: 54px;'>Patient-IA</h1>",
+            unsafe_allow_html=True
+        )
 else:
     st.markdown("""
     <div class="main-header">
@@ -752,33 +745,35 @@ with st.container():
                                     else:
                                         st.info("No hay columnas numéricas")
     else:
-        # Mensaje de bienvenida centrado
-        col1, col2 = st.columns([1, 2])
-        with col2:
-            with st.chat_message("assistant"):
-                st.markdown("**Bienvenido a Patientia AI**")
-                st.markdown("Generación inteligente de datos clínicos sintéticos.")
-                
-                # Crear dos columnas para el contenido
-                content_col1, content_col2 = st.columns(2)
-                
-                with content_col1:
-                    st.markdown("""
-                    **¿Qué puedo hacer por ti?**  
-                    - Analizar datasets médicos existentes  
-                    - Generar datos sintéticos realistas y seguros  
-                    - Validar la coherencia clínica de los datos  
-                    - Simular la evolución temporal de pacientes  
-                    """)
-                
-                with content_col2:
-                    st.markdown("""
-                    **Para comenzar:**  
-                    - Sube un archivo CSV/Excel con datos clínicos anonimizados  
-                    - Pregunta sobre generación de datos sintéticos 
-                    - Solicita análisis o validación de datos 
-                    - Escribe "ayuda" para ver más opciones  
-                    """)
+        # Mensaje de bienvenida centrado (solo una columna principal)
+        st.markdown(
+            """
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 120px;">
+                <strong style="font-size: 1.5rem; text-align: center;">Bienvenido a Patient AI</strong>
+                <span style="font-size: 1.1rem; color: #374151; text-align: center;">Asistente de Generación de datos clínicos sintéticos.</span>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        # Crear dos columnas internas centradas para el contenido
+        left, center1, center2, right = st.columns([1.5,2,2,0.7])
+        with center1:
+            st.markdown("""
+            **¿Qué puedo hacer por ti?**  
+            - Analizar datasets médicos existentes  
+            - Generar datos sintéticos realistas y seguros  
+            - Validar la coherencia clínica de los datos  
+            - Simular la evolución temporal de pacientes  
+            """)
+        with center2:
+            st.markdown("""
+            **Para comenzar:**  
+            - Sube un archivo CSV/Excel con datos clínicos
+            - Pregunta sobre generación de datos sintéticos 
+            - Solicita análisis o validación de datos 
+            - Escribe "ayuda" para ver más opciones  
+            """)
 
 # Área de upload de archivos (solo cuando no hay archivo cargado)
 if not st.session_state.file_uploaded:
@@ -1093,11 +1088,19 @@ with st.sidebar:
     - `analizar datos` - Analizar dataset
     - `generar sintéticos` - Crear datos artificiales
     - `validar datos` - Verificar coherencia
-    - `simular evolución` - Modelar progresión
     - `evaluar calidad` - Medir utilidad
+    - `simular evolución` - Modelar progresión
     - `ayuda` - Ver más opciones
     """)
     
     # Footer
     st.markdown("---")
     st.caption("Powered by AI + LangChain")
+
+def limit_chat_history():
+    """Limita el historial de chat para evitar exceso de tokens"""
+    if len(st.session_state.chat_history) > 20:  # Mantener solo últimos 20 mensajes
+        st.session_state.chat_history = st.session_state.chat_history[-20:]
+
+# Llamar antes de procesar cada mensaje
+limit_chat_history()

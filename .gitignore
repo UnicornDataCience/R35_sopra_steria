@@ -252,4 +252,24 @@ $RECYCLE.BIN/
 *.sh
 .vsc
 *.vscode
-.env 
+.env
+
+# Project specific directories
+logs/
+outputs/
+data/synthetic/
+data/processed/
+temp/
+cache/
+
+# Model artifacts and large files
+*.pkl
+*.joblib
+*.h5
+*.onnx
+models/
+
+# Generated reports and outputs
+reports/
+*.pdf
+*.docx

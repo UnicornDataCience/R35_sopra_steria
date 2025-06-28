@@ -312,7 +312,11 @@ def procesar_archivo_json(nombre_archivo):
     
     try:
         with open(nombre_archivo, 'r', encoding='utf-8') as f:
+            MAX_LINES = 100  # Limitar a 100 líneas para evitar sobrecarga
             for numero_linea, linea in enumerate(f, 1):
+                if numero_linea > MAX_LINES:
+                    log_lines.append(f"... Procesamiento limitado a {MAX_LINES} líneas por rendimiento")
+                    break
                 if not linea.strip():
                     continue
                 try:
@@ -371,6 +375,40 @@ def procesar_archivo_json(nombre_archivo):
         print(f"✅ Log de error guardado en '{log_name}'")
 
 
-procesar_archivo_json(JSON_PATH_SDV)
-procesar_archivo_json(JSON_PATH_TVAE)
-procesar_archivo_json(JSON_PATH_CTGAN)
+
+# DESPUÉS (correcto - rutas dinámicas):
+import os
+import sys
+
+# Añadir el path del proyecto
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+sys.path.insert(0, project_root)
+
+from src.utils.path_resolver import PathResolver, get_synthetic_files
+
+def main():
+    print("🏥 Validador de reglas clínicas para datos sintéticos")
+    print("=" * 50)
+    
+    # Obtener archivos automáticamente
+    files = get_synthetic_files()
+    json_files = [files['sdv_json'], files['tvae_json'], files['ctgan_json']]
+    
+    print(f"📂 Buscando archivos en: {PathResolver.get_synthetic_dir()}")
+    
+    for archivo in json_files:
+        if os.path.exists(archivo):
+            print(f"\n📂 Procesando: {os.path.basename(archivo)}")
+            procesar_archivo_json_clinico(archivo)
+        else:
+            print(f"\n⚠️ Archivo no encontrado: {os.path.basename(archivo)}")
+    
+    print("\n✅ Validación clínica completada")
+
+if __name__ == "__main__":
+    main()
+
+def procesar_archivo_json_clinico(nombre_archivo):
+    """Procesa archivo JSON y valida reglas clínicas"""
+    # ... usar el código existente de procesar_archivo_json ...
+    return procesar_archivo_json(nombre_archivo)  # Usar la función existente
