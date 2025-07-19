@@ -17,11 +17,12 @@ umap = "*"
 faiss-cpu = "*"
 umap-learn = "*"
 langchain = "*"
-langgraph = "*"
 streamlit = "*"
 pandas = "*"
 python-dotenv = "*"
 jsonschema = "*"
+langgraph = "*"
+pytest-asyncio = "*"
 
 [dev-packages]
 

@@ -1,8 +1,9 @@
 import pandas as pd
 from sdv.single_table import CTGANSynthesizer
-from sdv.metadata import Metadata
+from sdv.metadata import SingleTableMetadata
 import tempfile
 import os
+import sys
 import uuid
 
 # CORREGIR: Usar la misma estructura que los otros generadores
@@ -15,51 +16,69 @@ class CTGANGenerator:
     def __init__(self, sample_size=10):
         self.sample_size = sample_size
 
-    def generate(self, real_df_path, sample_size=None):
-        import uuid
+    def generate(self, real_df, sample_size=None, is_covid_dataset=False):
         n_samples = sample_size if sample_size is not None else self.sample_size
         
-        real_df = pd.read_csv(
-            real_df_path,
-            sep=',',
-            low_memory=False,
-            encoding="utf-8"
-        )
-        
-        columnas = ['PATIENT ID', 'EDAD/AGE', 'SEXO/SEX', 'DIAG ING/INPAT',
-                    'FARMACO/DRUG_NOMBRE_COMERCIAL/COMERCIAL_NAME', 'UCI_DIAS/ICU_DAYS',
-                    'TEMP_ING/INPAT', 'SAT_02_ING/INPAT', 'RESULTADO/VAL_RESULT',
-                    'MOTIVO_ALTA/DESTINY_DISCHARGE_ING']
-        real_df = real_df[columnas]
-        
-        # Filtrar solo pacientes COVID-19
-        real_df = real_df[real_df['DIAG ING/INPAT'].str.contains('COVID19', na=False, case=False)]
-        
-        # Rellenar nulos y corregir tipos
-        real_df['MOTIVO_ALTA/DESTINY_DISCHARGE_ING'] = real_df['MOTIVO_ALTA/DESTINY_DISCHARGE_ING'].fillna('Domicilio')
-        real_df['MOTIVO_ALTA/DESTINY_DISCHARGE_ING'] = real_df['MOTIVO_ALTA/DESTINY_DISCHARGE_ING'].replace(0, 'Domicilio')
+        # Si es un dataset COVID, aplicar el filtrado de 10 columnas
+        if is_covid_dataset:
+            columnas_covid = ['PATIENT ID', 'EDAD/AGE', 'SEXO/SEX', 'DIAG ING/INPAT',
+                              'FARMACO/DRUG_NOMBRE_COMERCIAL/COMERCIAL_NAME', 'UCI_DIAS/ICU_DAYS',
+                              'TEMP_ING/INPAT', 'SAT_02_ING/INPAT', 'RESULTADO/VAL_RESULT',
+                              'MOTIVO_ALTA/DESTINY_DISCHARGE_ING']
+            
+            # Filtrar solo las columnas que existen en el DataFrame
+            existing_covid_cols = [col for col in columnas_covid if col in real_df.columns]
+            if len(existing_covid_cols) < len(columnas_covid):
+                print(f"⚠️ Advertencia: Faltan algunas columnas COVID-19 esperadas. Se usarán: {existing_covid_cols}")
+            
+            real_df = real_df[existing_covid_cols].copy()
+            print(f"DEBUG: CTGAN - DataFrame filtrado a {len(real_df.columns)} columnas para COVID-19.")
+
+            # Filtrar solo pacientes COVID-19 si la columna de diagnóstico existe
+            if 'DIAG ING/INPAT' in real_df.columns:
+                real_df = real_df[real_df['DIAG ING/INPAT'].astype(str).str.contains('COVID19', na=False, case=False)].copy()
+                print(f"DEBUG: CTGAN - DataFrame filtrado por contenido COVID-19: {len(real_df)} filas.")
+
+        # Rellenar nulos y corregir tipos (aplicar a las columnas que queden)
+        # Asegurarse de que las columnas existan antes de intentar rellenar/convertir
+        if 'MOTIVO_ALTA/DESTINY_DISCHARGE_ING' in real_df.columns:
+            real_df['MOTIVO_ALTA/DESTINY_DISCHARGE_ING'] = real_df['MOTIVO_ALTA/DESTINY_DISCHARGE_ING'].fillna('Domicilio')
+            real_df['MOTIVO_ALTA/DESTINY_DISCHARGE_ING'] = real_df['MOTIVO_ALTA/DESTINY_DISCHARGE_ING'].replace(0, 'Domicilio')
         
         # Convertir columnas numéricas - IGUAL que los otros generadores
-        real_df['EDAD/AGE'] = pd.to_numeric(real_df['EDAD/AGE'], errors='coerce').fillna(0).astype(int)
-        real_df['PATIENT ID'] = pd.to_numeric(real_df['PATIENT ID'], errors='coerce').fillna(0).astype(int)
-        real_df['UCI_DIAS/ICU_DAYS'] = pd.to_numeric(real_df['UCI_DIAS/ICU_DAYS'], errors='coerce').fillna(0).astype(int)
-        real_df['TEMP_ING/INPAT'] = pd.to_numeric(real_df['TEMP_ING/INPAT'], errors='coerce').fillna(0).astype(float)
-        real_df['SAT_02_ING/INPAT'] = pd.to_numeric(real_df['SAT_02_ING/INPAT'], errors='coerce').fillna(0).astype(float)
+        numeric_cols = {
+            'EDAD/AGE': int,
+            'PATIENT ID': int,
+            'UCI_DIAS/ICU_DAYS': int,
+            'TEMP_ING/INPAT': float,
+            'SAT_02_ING/INPAT': float
+        }
+        for col, dtype in numeric_cols.items():
+            if col in real_df.columns:
+                real_df[col] = pd.to_numeric(real_df[col], errors='coerce').fillna(0).astype(dtype)
         
         # Reemplazar 0s por valores medios - IGUAL que los otros generadores
-        real_df['UCI_DIAS/ICU_DAYS'] = real_df['UCI_DIAS/ICU_DAYS'].replace(0, round(real_df['UCI_DIAS/ICU_DAYS'].mean()))
-        real_df['EDAD/AGE'] = real_df['EDAD/AGE'].replace(0, round(real_df['EDAD/AGE'].mean()))
-        real_df['TEMP_ING/INPAT'] = real_df['TEMP_ING/INPAT'].replace(0, real_df['TEMP_ING/INPAT'].mean())
-        real_df['PATIENT ID'] = real_df['PATIENT ID'].replace(0, round(real_df['PATIENT ID'].mean()))
-        real_df['SAT_02_ING/INPAT'] = real_df['SAT_02_ING/INPAT'].replace(0, round(real_df['SAT_02_ING/INPAT'].mean()))
+        for col in ['UCI_DIAS/ICU_DAYS', 'EDAD/AGE', 'TEMP_ING/INPAT', 'PATIENT ID', 'SAT_02_ING/INPAT']:
+            if col in real_df.columns and real_df[col].dtype in ['int64', 'float64']:
+                mean_val = real_df[col].mean()
+                if pd.isna(mean_val):
+                    mean_val = 0 # Fallback si la media es NaN
+                real_df[col] = real_df[col].replace(0, round(mean_val) if col != 'TEMP_ING/INPAT' else mean_val)
 
-        metadata = Metadata()
-        metadata = metadata.detect_from_dataframe(
+        # Si el DataFrame está vacío después del filtrado, no se puede generar
+        if real_df.empty:
+            print("❌ CTGAN - DataFrame vacío después del filtrado. No se puede generar datos sintéticos.")
+            return pd.DataFrame() # Devolver DataFrame vacío
+
+        metadata = SingleTableMetadata()
+        metadata.detect_from_dataframe(
             data=real_df,
-            table_name='my_table_ctgan',  # CORREGIR: Usar nombre específico para CTGAN
+            table_name='my_table_ctgan',
             infer_sdtypes=False
         )
         
+        # Definir tipos de columnas manualmente para mayor precisión
+        # Solo para las columnas que realmente están en el DataFrame filtrado
         column_types = {
             "EDAD/AGE": "numerical",
             "SEXO/SEX": "categorical",
@@ -73,14 +92,16 @@ class CTGANGenerator:
         }
         
         for col, sdtype in column_types.items():
-            metadata.update_column(
-                column_name=col,
-                sdtype=sdtype)
+            if col in real_df.columns: # Solo actualizar si la columna existe
+                metadata.update_column(
+                    column_name=col,
+                    sdtype=sdtype)
         
-        metadata.update_column(
-            column_name='PATIENT ID',
-            sdtype='id',
-            regex_format='SYN-[0-9]{4}')  # CORREGIR: Consistente con otros generadores
+        if 'PATIENT ID' in real_df.columns: # Solo actualizar si la columna existe
+            metadata.update_column(
+                column_name='PATIENT ID',
+                sdtype='id',
+                regex_format='SYN-[0-9]{4}')
         
         metadata.validate()
         
@@ -98,14 +119,16 @@ class CTGANGenerator:
         return result
 
 if __name__ == "__main__":
-    # CORREGIR: Usar la misma estructura de rutas que otros generadores
+    # Para pruebas, cargar un DataFrame de ejemplo
     script_dir = os.path.dirname(__file__)
-    archivo_csv = os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'real', 'df_final_v2.csv'))  # Usar mismo archivo
-    sample_size = 500  # Mismo tamaño que otros
+    archivo_csv_path = os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'real', 'df_final_v2.csv'))
+    real_df_test = pd.read_csv(archivo_csv_path, sep=',', low_memory=False, encoding="utf-8")
+
+    sample_size = 500
     
     # Usar la clase CTGANGenerator
     generator = CTGANGenerator(sample_size=sample_size)
-    datos_sinteticos = generator.generate(archivo_csv)
+    datos_sinteticos = generator.generate(real_df_test, sample_size, is_covid_dataset=True) # Probar con COVID
     print(f"✅ Generados {len(datos_sinteticos)} registros CTGAN")
     print(datos_sinteticos.head())
     
@@ -133,8 +156,12 @@ if __name__ == "__main__":
         utils_path = os.path.join(os.path.dirname(__file__), '..', '..', 'utils')
         sys.path.insert(0, utils_path)
         
-        from fix_json_generators import fix_json_generation
-        return fix_json_generation(df, json_path)
+        # from fix_json_generators import fix_json_generation  # Comentado hasta que esté disponible
+        # return fix_json_generation(df, json_path)
+        
+        # Fallback: guardar JSON simple
+        df.to_json(json_path, orient='records', indent=2)
+        return True
 
     # REEMPLAZAR la línea:
     # datos_sinteticos.to_json(json_path, orient='records', lines=True)
@@ -152,7 +179,7 @@ if __name__ == "__main__":
     
     # Guardar metadatos consistentes
     metadata_path = os.path.join(synthetic_dir, 'metadata_ctgan.json')
-    metadata = Metadata()
+    metadata = SingleTableMetadata()
     metadata = metadata.detect_from_dataframe(
         data=datos_sinteticos,
         table_name='my_table_ctgan',  # CORREGIR: Nombre específico

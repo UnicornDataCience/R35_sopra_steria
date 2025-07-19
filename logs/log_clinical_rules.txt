@@ -1,4 +1,0 @@
-Reporte de validación - 2025-06-23 23:35:29
-Archivo: D:\Documentos\PROYECTOS\data\synthetic\datos_sinteticos_sdv.json
---------------------------------------------------
-Error: El archivo 'D:\Documentos\PROYECTOS\data\synthetic\datos_sinteticos_sdv.json' no fue encontrado.

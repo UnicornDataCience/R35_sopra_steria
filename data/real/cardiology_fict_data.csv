@@ -1,0 +1,101 @@
+patient_id,age,gender,diagnosis,systolic_bp,diastolic_bp,cholesterol,heart_rate,ejection_fraction,medication
+PAT_001,62,M,Hypertension,123.7,104.6,233.3,66.3,,Metoprolol
+PAT_002,52,F,Hypertension,145.2,85.3,190.1,86.3,56.3,Atorvastatin
+PAT_003,64,M,Myocardial Infarction,114.5,95.2,282.0,82.5,56.1,Lisinopril
+PAT_004,77,M,Myocardial Infarction,125.3,80.3,224.6,60.3,62.3,Metoprolol
+PAT_005,51,M,Hypertension,120.3,89.9,267.2,76.5,59.8,Atorvastatin
+PAT_006,51,F,Atrial Fibrillation,131.6,83.0,222.7,86.3,57.2,Lisinopril
+PAT_007,78,F,Atrial Fibrillation,176.3,86.5,302.4,50.0,47.1,Lisinopril
+PAT_008,66,F,Heart Failure,92.7,93.9,,83.2,59.7,Metoprolol
+PAT_009,47,M,Heart Failure,143.7,72.7,210.0,65.1,70.0,None
+PAT_010,63,M,Hypertension,97.7,116.4,258.9,,68.5,Lisinopril
+PAT_011,48,F,Hypertension,120.6,69.9,245.8,63.6,70.0,Lisinopril
+PAT_012,48,F,Myocardial Infarction,151.8,66.8,274.7,50.0,49.9,Atorvastatin
+PAT_013,58,F,Myocardial Infarction,131.3,102.4,181.4,50.6,45.1,Warfarin
+PAT_014,26,F,Heart Failure,108.4,96.9,247.4,75.7,53.7,Metoprolol
+PAT_015,29,M,Hypertension,115.7,94.4,262.3,78.9,55.6,Metoprolol
+PAT_016,46,F,Hypertension,143.6,94.4,150.0,61.4,65.9,None
+PAT_017,39,M,Atrial Fibrillation,115.4,84.8,172.7,84.6,38.1,None
+PAT_018,59,F,Myocardial Infarction,134.3,71.5,150.0,50.1,70.0,Metoprolol
+PAT_019,41,M,Myocardial Infarction,130.9,86.1,209.2,74.0,53.4,None
+PAT_020,33,F,Atrial Fibrillation,117.0,74.8,,56.8,50.7,Atorvastatin
+PAT_021,76,F,Heart Failure,172.9,99.6,280.1,65.2,44.9,Metoprolol
+PAT_022,51,F,Hypertension,142.7,82.8,223.0,75.7,38.5,None
+PAT_023,56,F,Hypertension,90.0,72.6,285.1,,63.2,Metoprolol
+PAT_024,33,M,Myocardial Infarction,133.7,80.2,164.8,69.2,55.7,Warfarin
+PAT_025,46,F,Heart Failure,116.8,91.2,,90.1,42.1,Lisinopril
+PAT_026,56,M,Hypertension,147.0,76.5,217.8,66.3,42.0,Metoprolol
+PAT_027,37,M,Hypertension,114.1,72.7,235.4,87.5,,Lisinopril
+PAT_028,60,M,Atrial Fibrillation,127.7,88.7,218.7,,70.0,None
+PAT_029,45,M,Hypertension,140.1,88.7,150.0,82.9,52.4,Lisinopril
+PAT_030,50,F,Hypertension,147.3,77.4,216.4,96.6,40.0,Metoprolol
+PAT_031,45,M,Heart Failure,106.0,77.9,167.8,50.0,52.5,Warfarin
+PAT_032,82,M,Atrial Fibrillation,123.3,88.5,246.8,63.0,52.3,None
+PAT_033,54,M,Atrial Fibrillation,120.5,63.3,234.7,83.7,28.0,Metoprolol
+PAT_034,39,F,Hypertension,116.9,63.9,182.4,72.0,54.5,None
+PAT_035,67,F,Atrial Fibrillation,165.3,74.2,199.4,80.6,52.7,Atorvastatin
+PAT_036,36,F,Hypertension,138.1,81.8,177.6,65.9,62.0,Lisinopril
+PAT_037,58,F,Hypertension,104.8,89.7,217.5,76.3,70.0,Atorvastatin
+PAT_038,25,M,Atrial Fibrillation,148.4,107.1,258.2,72.7,66.3,Metoprolol
+PAT_039,35,M,Heart Failure,172.4,97.9,180.6,92.5,52.3,Warfarin
+PAT_040,57,F,Atrial Fibrillation,150.6,82.6,240.2,78.8,43.9,None
+PAT_041,66,M,Atrial Fibrillation,99.6,84.7,198.8,80.1,70.0,Lisinopril
+PAT_042,57,M,Heart Failure,120.3,70.0,188.3,68.8,55.6,None
+PAT_043,53,M,Hypertension,155.3,84.7,215.7,67.7,55.1,Metoprolol
+PAT_044,50,F,Hypertension,115.8,80.7,178.6,68.5,54.8,None
+PAT_045,32,F,Hypertension,138.9,89.8,197.9,80.9,57.0,Lisinopril
+PAT_046,44,M,Hypertension,145.5,72.6,172.1,68.7,53.6,Metoprolol
+PAT_047,48,F,Myocardial Infarction,111.5,92.8,298.6,79.3,49.3,None
+PAT_048,70,F,Hypertension,128.8,108.0,221.4,106.1,49.5,Warfarin
+PAT_049,60,F,Myocardial Infarction,90.0,83.4,,88.1,54.7,Metoprolol
+PAT_050,28,F,Heart Failure,109.5,91.0,228.6,70.1,49.6,Metoprolol
+PAT_051,59,F,Atrial Fibrillation,124.9,95.4,215.5,93.0,47.9,Warfarin
+PAT_052,49,M,Heart Failure,105.0,79.0,211.2,68.9,56.1,Atorvastatin
+PAT_053,44,F,Heart Failure,162.6,88.4,244.6,50.0,52.5,Lisinopril
+PAT_054,64,M,Heart Failure,101.4,85.2,250.3,59.9,70.0,Atorvastatin
+PAT_055,70,M,Hypertension,121.2,86.5,198.8,50.0,28.5,None
+PAT_056,68,F,Atrial Fibrillation,132.6,73.4,197.0,69.7,65.9,Warfarin
+PAT_057,42,M,Hypertension,158.8,85.4,209.0,75.3,67.5,Atorvastatin
+PAT_058,50,M,Hypertension,101.3,92.5,150.0,100.1,34.3,Metoprolol
+PAT_059,59,M,Heart Failure,153.3,106.8,159.4,79.9,51.6,None
+PAT_060,69,F,Hypertension,130.2,99.4,274.7,71.7,51.3,None
+PAT_061,47,F,Myocardial Infarction,110.4,117.3,285.8,,40.9,Atorvastatin
+PAT_062,52,M,Myocardial Infarction,139.2,73.5,210.0,50.0,47.2,Atorvastatin
+PAT_063,38,F,Myocardial Infarction,134.0,98.1,243.1,78.5,43.9,Warfarin
+PAT_064,37,F,Hypertension,118.0,87.8,232.5,86.6,70.0,Lisinopril
+PAT_065,67,F,Hypertension,131.4,117.8,343.2,52.8,64.4,Atorvastatin
+PAT_066,75,F,Myocardial Infarction,122.3,72.9,264.8,92.2,67.7,Atorvastatin
+PAT_067,53,M,Heart Failure,132.3,72.4,214.9,80.1,62.2,Metoprolol
+PAT_068,70,M,Myocardial Infarction,143.2,76.0,181.8,68.8,43.7,None
+PAT_069,60,F,Myocardial Infarction,161.7,60.0,155.7,84.5,49.8,Lisinopril
+PAT_070,45,F,Myocardial Infarction,105.2,77.1,228.1,109.1,59.9,Metoprolol
+PAT_071,60,M,Hypertension,172.7,73.6,189.7,,42.8,Warfarin
+PAT_072,78,M,Hypertension,91.0,87.3,163.1,78.7,62.1,Warfarin
+PAT_073,54,F,Myocardial Infarction,127.0,90.1,194.1,68.1,52.6,Atorvastatin
+PAT_074,78,M,Hypertension,141.8,113.1,176.7,62.3,51.3,Atorvastatin
+PAT_075,18,F,Hypertension,135.6,99.3,287.5,87.5,62.1,Warfarin
+PAT_076,67,F,Heart Failure,117.5,76.3,255.3,62.2,59.4,Atorvastatin
+PAT_077,56,M,Myocardial Infarction,125.8,71.5,219.7,76.1,51.4,Lisinopril
+PAT_078,50,M,Atrial Fibrillation,120.1,92.4,,67.8,,Atorvastatin
+PAT_079,56,F,Heart Failure,118.2,65.2,223.1,82.2,44.2,None
+PAT_080,25,F,Hypertension,147.0,112.5,185.5,80.0,61.2,Atorvastatin
+PAT_081,51,M,Heart Failure,137.1,102.7,280.9,90.6,,Metoprolol
+PAT_082,60,F,Myocardial Infarction,116.1,78.0,241.6,67.3,51.9,Lisinopril
+PAT_083,77,M,Hypertension,148.0,60.0,178.5,71.0,58.3,Metoprolol
+PAT_084,47,F,Heart Failure,136.1,105.3,212.4,60.3,42.5,Metoprolol
+PAT_085,42,M,Myocardial Infarction,146.3,83.3,185.0,68.3,64.2,None
+PAT_086,47,M,Atrial Fibrillation,142.6,103.6,164.7,80.7,53.2,Lisinopril
+PAT_087,68,M,Atrial Fibrillation,113.4,61.1,257.0,86.4,49.8,Lisinopril
+PAT_088,59,F,Atrial Fibrillation,118.8,76.0,296.4,61.2,65.5,Lisinopril
+PAT_089,47,F,Hypertension,144.9,85.1,164.1,88.0,48.0,Lisinopril
+PAT_090,62,M,Hypertension,142.2,85.7,242.5,95.3,40.9,Lisinopril
+PAT_091,56,F,Atrial Fibrillation,129.6,78.2,194.0,81.2,39.4,None
+PAT_092,69,M,Atrial Fibrillation,132.3,94.3,200.5,103.2,61.1,Atorvastatin
+PAT_093,44,M,Myocardial Infarction,155.6,69.0,196.3,63.4,42.2,Metoprolol
+PAT_094,50,F,Myocardial Infarction,118.2,82.9,185.4,56.3,70.0,Lisinopril
+PAT_095,49,F,Heart Failure,140.9,86.8,221.9,50.0,34.2,Atorvastatin
+PAT_096,33,M,Heart Failure,126.0,92.7,186.8,97.4,,Atorvastatin
+PAT_097,59,F,Atrial Fibrillation,125.6,95.7,230.8,84.8,57.1,Metoprolol
+PAT_098,58,F,Heart Failure,152.0,68.1,218.0,74.2,54.0,None
+PAT_099,55,M,Atrial Fibrillation,146.5,62.0,210.4,79.2,49.6,Warfarin
+PAT_100,51,M,Atrial Fibrillation,146.3,104.2,183.7,58.1,59.0,Warfarin

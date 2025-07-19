@@ -1,210 +1,160 @@
-from typing import Dict, Any, List
-from langgraph.graph import Graph, StateGraph, END, START
-from langgraph.prebuilt import ToolExecutor
-from langchain.schema import BaseMessage
-from pydantic import BaseModel
-import asyncio
+"""
+Orquestador LangGraph para coordinar múltiples agentes médicos especializados.
+"""
 
-class AgentState(BaseModel):
-    """Estado compartido entre agentes"""
-    messages: List[BaseMessage] = []
-    current_agent: str = "coordinator"
-    context: Dict[str, Any] = {}
-    dataset_uploaded: bool = False
-    analysis_complete: bool = False
-    generation_complete: bool = False
-    validation_complete: bool = False
-    simulation_complete: bool = False
-    evaluation_complete: bool = False
-    synthetic_data: Any = None
-    user_input: str = ""
-    next_action: str = ""
+from typing import Dict, Any, List, TypedDict
+from langgraph.graph import StateGraph, START, END
+import pandas as pd
+import logging
+
+from ..agents.coordinator_agent import CoordinatorAgent
+from ..agents.analyzer_agent import ClinicalAnalyzerAgent
+from ..agents.generator_agent import SyntheticGeneratorAgent
+from ..agents.validator_agent import MedicalValidatorAgent
+from ..agents.simulator_agent import PatientSimulatorAgent
+from ..agents.evaluator_agent import UtilityEvaluatorAgent
+from ..adapters.universal_dataset_detector import UniversalDatasetDetector
+
+# Configurar logger
+logger = logging.getLogger(__name__)
+
+class AgentState(TypedDict):
+    user_input: str
+    context: Dict[str, Any]
+    coordinator_response: Dict[str, Any]
+    universal_analysis: Dict[str, Any]
+    next_agent: str
+    error: str
+    messages: List[Dict[str, Any]]
 
 class MedicalAgentsOrchestrator:
-    """Orquestador de agentes médicos usando LangGraph"""
-    
     def __init__(self, agents: Dict[str, Any]):
         self.agents = agents
-        if "coordinator" not in self.agents:
-            from ..agents.coordinator_agent import CoordinatorAgent
-            self.agents["coordinator"] = CoordinatorAgent()
-    
+        self.universal_detector = UniversalDatasetDetector()
         self.workflow = self._create_workflow()
-        
+        print("🏗️ LangGraph Orchestrator V2 inicializado con componentes universales")
+
     def _create_workflow(self) -> StateGraph:
-        """Crea el workflow de agentes con LangGraph"""
-        
-        # Definir el grafo de estados
         workflow = StateGraph(AgentState)
-        
-        # Añadir nodos (agentes)
         workflow.add_node("coordinator", self._coordinator_node)
+        workflow.add_node("universal_analyzer", self._universal_analyzer_node)
         workflow.add_node("analyzer", self._analyzer_node)
         workflow.add_node("generator", self._generator_node)
-        workflow.add_node("validator", self._validator_node)
-        workflow.add_node("simulator", self._simulator_node)
-        workflow.add_node("evaluator", self._evaluator_node)
+        # ... (otros nodos se pueden añadir aquí)
         
-        # Definir flujo condicional
+        workflow.add_edge(START, "coordinator")
         workflow.add_conditional_edges(
             "coordinator",
             self._route_from_coordinator,
             {
+                "universal_analyzer": "universal_analyzer",
                 "analyzer": "analyzer",
                 "generator": "generator",
-                "validator": "validator",
-                "simulator": "simulator",
-                "evaluator": "evaluator",
-                "end": END
+                "__end__": END
             }
         )
-        
-        # Flujo secuencial principal
-        workflow.add_edge("analyzer", "generator")
-        workflow.add_edge("generator", "validator")  
-        workflow.add_edge("validator", "simulator")
-        workflow.add_edge("simulator", "evaluator")
-        workflow.add_edge("evaluator", END)
-        
-        # Punto de entrada
-        workflow.set_entry_point("coordinator")
-        
+        workflow.add_edge("universal_analyzer", "analyzer")
+        workflow.add_edge("analyzer", END)
+        workflow.add_edge("generator", END)
         return workflow.compile()
-    
-    def _route_from_coordinator(self, state: AgentState) -> str:
-        """Enruta desde el coordinador según el estado"""
-        
-        user_input = state.user_input.lower()
-        
-        if "archivo" in user_input or "dataset" in user_input:
-            return "analyzer"
-        elif state.analysis_complete and not state.generation_complete:
-            return "generator"
-        elif state.generation_complete and not state.validation_complete:
-            return "validator"
-        elif state.validation_complete and not state.simulation_complete:
-            return "simulator"
-        elif state.simulation_complete and not state.evaluation_complete:
-            return "evaluator"
-        else:
-            return "end"
-    
+
     async def _coordinator_node(self, state: AgentState) -> AgentState:
-        """Nodo coordinador principal"""
-        
-        coordinator_agent = self.agents.get("coordinator")
-        
-        if coordinator_agent:
-            response = await coordinator_agent.process(
-                state.user_input,
-                state.context
-            )
-            
-            # Actualizar estado basado en respuesta
-            if "archivo" in response.get("message", "").lower():
-                state.next_action = "request_upload"
-            
+        response = await self.agents["coordinator"].process(state["user_input"], state["context"])
+        state["coordinator_response"] = response
         return state
-    
+
+    async def _universal_analyzer_node(self, state: AgentState) -> AgentState:
+        df = state["context"].get("dataframe")
+        if df is None or not isinstance(df, pd.DataFrame):
+            state["error"] = "Dataset no encontrado para análisis."
+            return state
+        analysis = self.universal_detector.analyze_dataset(df)
+        state["universal_analysis"] = analysis
+        state["context"]["universal_analysis"] = analysis # Asegurar que el contexto se actualiza
+        return state
+
     async def _analyzer_node(self, state: AgentState) -> AgentState:
-        """Nodo del agente analista"""
-        
-        analyzer_agent = self.agents.get("analyzer")
-        
-        if analyzer_agent and state.dataset_uploaded:
-            # Obtener dataset del contexto
-            dataframe = state.context.get("dataframe")
-            
-            if dataframe is not None:
-                response = await analyzer_agent.analyze_dataset(
-                    dataframe, 
-                    state.context
-                )
-                
-                # Actualizar estado
-                state.analysis_complete = True
-                state.context["analysis_result"] = response
-        
+        response = await self.agents["analyzer"].analyze_dataset(None, state["context"])
+        state["messages"] = state.get("messages", []) + [response]
         return state
-    
+
     async def _generator_node(self, state: AgentState) -> AgentState:
-        """Nodo del agente generador"""
+        params = state["coordinator_response"].get("parameters", {})
         
-        generator_agent = self.agents.get("generator")
+        # Obtener DataFrame original
+        df = state["context"].get("dataframe")
+        if df is None:
+            state["error"] = "Dataset no encontrado para generación."
+            return state
         
-        if generator_agent and state.analysis_complete:
-            response = await generator_agent.process(
-                f"Generar datos sintéticos basados en: {state.context.get('analysis_result', {})}",
-                state.context
-            )
+        # Verificar si hay columnas seleccionadas por el usuario
+        selected_columns = state["context"].get("selected_columns")
+        
+        if selected_columns:
+            # Usar las columnas seleccionadas por el usuario
+            df_for_generation = df[selected_columns].copy()
+            logger.info(f"Usando {len(selected_columns)} columnas seleccionadas por el usuario para generación")
+        else:
+            # Aplicar lógica automática basada en el tipo de dataset
+            universal_analysis = state["context"].get("universal_analysis", {})
+            dataset_type = universal_analysis.get("medical_domain", "unknown")
             
-            state.generation_complete = True
-            state.context["generation_result"] = response
+            if dataset_type == "covid19":
+                # Para COVID-19, usar solo 10 columnas específicas
+                covid_columns = [
+                    'age', 'sex', 'patient_type', 'pneumonia', 'diabetes', 
+                    'copd', 'asthma', 'inmsupr', 'hypertension', 'cardiovascular'
+                ]
+                available_covid_cols = [col for col in covid_columns if col in df.columns]
+                
+                if len(available_covid_cols) >= 5:  # Mínimo 5 columnas
+                    df_for_generation = df[available_covid_cols].copy()
+                    logger.info(f"Usando {len(available_covid_cols)} columnas COVID-19 específicas")
+                else:
+                    # Fallback: usar todas las columnas
+                    df_for_generation = df.copy()
+                    logger.warning("No suficientes columnas COVID-19, usando todas las columnas")
+            else:
+                # Para otros datasets, usar todas las columnas (máximo 15 para rendimiento)
+                if len(df.columns) > 15:
+                    # Priorizar columnas numéricas y categóricas importantes
+                    numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
+                    categorical_cols = df.select_dtypes(include=['object']).columns.tolist()
+                    
+                    selected_auto = (numeric_cols[:10] + categorical_cols[:5])[:15]
+                    df_for_generation = df[selected_auto].copy()
+                    logger.info(f"Dataset grande: usando {len(selected_auto)} columnas automáticamente seleccionadas")
+                else:
+                    df_for_generation = df.copy()
+                    logger.info(f"Usando todas las {len(df.columns)} columnas del dataset")
         
+        # Actualizar el contexto con el DataFrame procesado
+        updated_context = {**state["context"], **params}
+        updated_context["dataframe"] = df_for_generation
+        updated_context["original_dataframe"] = df  # Mantener referencia al original
+        
+        # Llamar al agente generador
+        response = await self.agents["generator"].process(state["user_input"], updated_context)
+        state["messages"] = state.get("messages", []) + [response]
         return state
-    
-    async def _validator_node(self, state: AgentState) -> AgentState:
-        """Nodo del agente validador"""
+
+    def _route_from_coordinator(self, state: AgentState) -> str:
+        intended_agent = state["coordinator_response"].get("agent")
+        if state["coordinator_response"].get("intention") == "conversacion":
+            state["messages"] = [state["coordinator_response"]]
+            return "__end__"
+
+        if intended_agent == "analyzer":
+            if not state["context"].get("universal_analysis"):
+                return "universal_analyzer"
+            return "analyzer"
         
-        validator_agent = self.agents.get("validator")
-        
-        if validator_agent and state.generation_complete:
-            response = await validator_agent.process(
-                "Validar coherencia médica de los datos sintéticos generados",
-                state.context
-            )
-            
-            state.validation_complete = True
-            state.context["validation_result"] = response
-        
-        return state
-    
-    async def _simulator_node(self, state: AgentState) -> AgentState:
-        """Nodo del agente simulador"""
-        
-        simulator_agent = self.agents.get("simulator")
-        
-        if simulator_agent and state.validation_complete:
-            response = await simulator_agent.process(
-                "Simular evolución temporal de pacientes sintéticos",
-                state.context
-            )
-            
-            state.simulation_complete = True
-            state.context["simulation_result"] = response
-        
-        return state
-    
-    async def _evaluator_node(self, state: AgentState) -> AgentState:
-        """Nodo del agente evaluador"""
-        
-        evaluator_agent = self.agents.get("evaluator")
-        
-        if evaluator_agent and state.simulation_complete:
-            response = await evaluator_agent.process(
-                "Evaluar utilidad y calidad de los datos sintéticos finales",
-                state.context
-            )
-            
-            state.evaluation_complete = True
-            state.context["evaluation_result"] = response
-        
-        return state
-    
+        if intended_agent == "generator":
+            return "generator"
+
+        return "__end__"
+
     async def process_user_input(self, user_input: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Procesa input del usuario a través del workflow"""
-        
-        # Crear estado inicial
-        initial_state = AgentState(
-            user_input=user_input,
-            context=context or {}
-        )
-        
-        # Ejecutar workflow
+        initial_state = {"user_input": user_input, "context": context or {}, "messages": []}
         final_state = await self.workflow.ainvoke(initial_state)
-        
-        return {
-            "state": final_state,
-            "response": final_state.context.get("current_response", "Proceso completado"),
-            "next_action": final_state.next_action
-        }
+        return final_state["messages"][-1] if final_state.get("messages") else {"message": "Error: No se generó respuesta."}

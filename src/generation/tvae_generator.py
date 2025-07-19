@@ -1,7 +1,8 @@
 import pandas as pd
 from sdv.single_table import TVAESynthesizer
-from sdv.metadata import Metadata
+from sdv.metadata import SingleTableMetadata
 import os
+import sys
 import tempfile
 import uuid
 
@@ -52,8 +53,8 @@ def generate_synthetic_data_tvae(real_df, sample_size=10):
     real_df['MOTIVO_ALTA/DESTINY_DISCHARGE_ING'] = real_df['MOTIVO_ALTA/DESTINY_DISCHARGE_ING'].fillna('Domicilio')
     # en MOTIVO_ALTA/DESTINY_DISCHARGE_ING sustituir los valores 0 por 'Domicilio'
     real_df['MOTIVO_ALTA/DESTINY_DISCHARGE_ING'] = real_df['MOTIVO_ALTA/DESTINY_DISCHARGE_ING'].replace(0, 'Domicilio')
-    metadata = Metadata()
-    metadata = metadata.detect_from_dataframe(
+    metadata = SingleTableMetadata()
+    metadata.detect_from_dataframe(
         data=real_df,
         table_name = 'my_table_tvae',
         infer_sdtypes=False
@@ -103,15 +104,16 @@ class TVAEGenerator:
     def __init__(self, sample_size=10):
         self.sample_size = sample_size
 
-    def generate(self, real_df_path, sample_size=None):
+    def generate(self, real_df, sample_size=None, is_covid_dataset=False):
         import uuid
         n_samples = sample_size if sample_size is not None else self.sample_size
-        real_df = pd.read_csv(
-            real_df_path,
-            sep=',',
-            low_memory=False,
-            encoding="utf-8"
-        )
+        # El DataFrame ya viene como parámetro, no necesitamos leerlo desde archivo
+        # real_df = pd.read_csv(
+        #     real_df_path,
+        #     sep=',',
+        #     low_memory=False,
+        #     encoding="utf-8"
+        # )
         columnas = ['PATIENT ID', 'EDAD/AGE', 'SEXO/SEX', 'DIAG ING/INPAT',
                     'FARMACO/DRUG_NOMBRE_COMERCIAL/COMERCIAL_NAME', 'UCI_DIAS/ICU_DAYS',
                     'TEMP_ING/INPAT', 'SAT_02_ING/INPAT', 'RESULTADO/VAL_RESULT',
@@ -131,8 +133,8 @@ class TVAEGenerator:
         real_df['SAT_02_ING/INPAT'] = real_df['SAT_02_ING/INPAT'].replace(0, round(real_df['SAT_02_ING/INPAT'].mean()))
         real_df['MOTIVO_ALTA/DESTINY_DISCHARGE_ING'] = real_df['MOTIVO_ALTA/DESTINY_DISCHARGE_ING'].fillna('Domicilio')
         real_df['MOTIVO_ALTA/DESTINY_DISCHARGE_ING'] = real_df['MOTIVO_ALTA/DESTINY_DISCHARGE_ING'].replace(0, 'Domicilio')
-        metadata = Metadata()
-        metadata = metadata.detect_from_dataframe(
+        metadata = SingleTableMetadata()
+        metadata.detect_from_dataframe(
             data=real_df,
             table_name='my_table_tvae',
             infer_sdtypes=False
@@ -178,8 +180,12 @@ def save_clean_json(df, json_path):
     utils_path = os.path.join(os.path.dirname(__file__), '..', '..', 'utils')
     sys.path.insert(0, utils_path)
     
-    from fix_json_generators import fix_json_generation
-    return fix_json_generation(df, json_path)
+    # from fix_json_generators import fix_json_generation  # Comentado hasta que esté disponible
+    # return fix_json_generation(df, json_path)
+    
+    # Fallback: guardar JSON simple
+    df.to_json(json_path, orient='records', indent=2)
+    return True
 
 def save_clean_json(df, json_path):
     """Guarda DataFrame como JSON limpio sin valores None"""
@@ -203,18 +209,74 @@ def save_clean_json(df, json_path):
 
 if __name__ == "__main__":
     import os
+    # Para pruebas, cargar un DataFrame de ejemplo
     script_dir = os.path.dirname(__file__)
-    archivo_csv = os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'real', 'df_final_v2.csv'))
-    sample_size = 1000
-    # Usar la clase TVAEGenerator
-    generator = TVAEGenerator(sample_size=sample_size)
-    datos_sinteticos = generator.generate(archivo_csv)
-    print(datos_sinteticos)
-    datos_sinteticos.to_csv(os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic', 'datos_sinteticos_tvae.csv')))
-    json_path = 'datos_sinteticos_tvae.json'
-    # Usar la función para guardar como JSON limpio
-    success = save_clean_json(datos_sinteticos, json_path)
-    if success:
-        print(f"✅ JSON limpio: {json_path}")
-    else:
-        print(f"❌ Error generando JSON: {json_path}")
+    archivo_csv_covid = os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'real', 'df_final_v2.csv'))
+    real_df_covid_test = pd.read_csv(archivo_csv_covid, sep=',', low_memory=False, encoding="utf-8")
+
+    archivo_csv_diabetes = os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'real', 'diabetes.csv'))
+    real_df_diabetes_test = pd.read_csv(archivo_csv_diabetes, sep=',', low_memory=False, encoding="utf-8")
+
+    sample_size = 500
+    
+    # Probar con dataset COVID
+    print("Probando TVAE con dataset COVID-19 ---")
+    generator_covid = TVAEGenerator(sample_size=sample_size)
+    datos_sinteticos_covid = generator_covid.generate(real_df_covid_test, sample_size, is_covid_dataset=True)
+    print(f"✅ Generados {len(datos_sinteticos_covid)} registros TVAE (COVID-19)")
+    print(datos_sinteticos_covid.head())
+
+    # Probar con dataset Diabetes
+    print("Probando TVAE con dataset Diabetes ---")
+    generator_diabetes = TVAEGenerator(sample_size=sample_size)
+    datos_sinteticos_diabetes = generator_diabetes.generate(real_df_diabetes_test, sample_size, is_covid_dataset=False)
+    print(f"✅ Generados {len(datos_sinteticos_diabetes)} registros TVAE (Diabetes)")
+    print(datos_sinteticos_diabetes.head())
+    
+    synthetic_dir = os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'synthetic'))
+    os.makedirs(synthetic_dir, exist_ok=True)
+    
+    csv_path_covid = os.path.join(synthetic_dir, 'datos_sinteticos_tvae_covid.csv')
+    json_path_covid = os.path.join(synthetic_dir, 'datos_sinteticos_tvae_covid.json')
+    datos_sinteticos_covid.to_csv(csv_path_covid, index=False)
+    datos_sinteticos_covid.to_json(json_path_covid, orient='records', lines=True)
+    print(f"✅ Archivos COVID guardados: {csv_path_covid}, {json_path_covid}")
+
+    csv_path_diabetes = os.path.join(synthetic_dir, 'datos_sinteticos_tvae_diabetes.csv')
+    json_path_diabetes = os.path.join(synthetic_dir, 'datos_sinteticos_tvae_diabetes.json')
+    datos_sinteticos_diabetes.to_csv(csv_path_diabetes, index=False)
+    datos_sinteticos_diabetes.to_json(json_path_diabetes, orient='records', lines=True)
+    print(f"✅ Archivos Diabetes guardados: {csv_path_diabetes}, {json_path_diabetes}")
+    
+    metadata_path = os.path.join(synthetic_dir, 'metadata_tvae.json')
+    metadata = SingleTableMetadata()
+    metadata.detect_from_dataframe(
+        data=datos_sinteticos_covid, # Usar el dataset COVID para la metadata principal
+        table_name='my_table_tvae',
+        infer_sdtypes=False
+    )
+    
+    column_types_covid = {
+        "EDAD/AGE": "numerical",
+        "SEXO/SEX": "categorical",
+        "DIAG ING/INPAT": "categorical",
+        "FARMACO/DRUG_NOMBRE_COMERCIAL/COMERCIAL_NAME": "categorical",
+        "UCI_DIAS/ICU_DAYS": "numerical",
+        "TEMP_ING/INPAT": "numerical",
+        "SAT_02_ING/INPAT": "numerical",
+        "RESULTADO/VAL_RESULT": "categorical",
+        "MOTIVO_ALTA/DESTINY_DISCHARGE_ING": "categorical"
+    }
+
+    for col, sdtype in column_types_covid.items():
+        if col in datos_sinteticos_covid.columns:
+            metadata.update_column(column_name=col, sdtype=sdtype)
+
+    if 'PATIENT ID' in datos_sinteticos_covid.columns:
+        metadata.update_column(
+            column_name='PATIENT ID',
+            sdtype='id',
+            regex_format='SYN-[0-9]{4}')
+
+    metadata.save_to_json(metadata_path)
+    print(f"   📋 Metadata: {metadata_path}")

@@ -410,5 +410,4 @@ if __name__ == "__main__":
 
 def procesar_archivo_json_clinico(nombre_archivo):
     """Procesa archivo JSON y valida reglas clínicas"""
-    # ... usar el código existente de procesar_archivo_json ...
-    return procesar_archivo_json(nombre_archivo)  # Usar la función existente
+    return procesar_archivo_json(nombre_archivo)

@@ -1,65 +1,75 @@
-from typing import Dict, Any, Optional
-import pandas as pd
+"""
+Agente Analizador Clínico - Especializado en la interpretación y generación de informes.
+"""
+
+import json
+from typing import Dict, Any
 from .base_agent import BaseLLMAgent, BaseAgentConfig
-from ..extraction.data_extractor import DataExtractor
+
+ANALYZER_SYSTEM_PROMPT = """
+Eres un Científico de Datos especializado en salud. Tu tarea es recibir un análisis técnico de un dataset (en JSON) y redactar un informe de análisis exploratorio (EDA) en Markdown.
+
+**ENTRADA (JSON):**
+Recibirás un JSON con la estructura:
+
+```json
+{{
+  "dataset_type": "<tipo>",
+  "column_mapping": {{"age_col": "<col>", ...}},
+  "basic_stats": {{"rows": <num>, ...}},
+  "missing_values": {{"total_missing": <num>, ...}},
+  "column_analysis": {{"<col_1>": {{"type": "...", ...}}}}
+}}
+```
+
+**TAREA (MARKDOWN):**
+Tu ÚNICA salida debe ser un informe en MARKDOWN con estas secciones:
+
+1.  **`### 📝 Resumen Ejecutivo`**: Párrafo con los hallazgos clave.
+2.  **`### 📊 Análisis Descriptivo`**: Características del dataset.
+3.  **`### 🩺 Calidad de los Datos`**: Evaluación de nulos y duplicados.
+4.  **`### 🔬 Análisis de Variables Clave`**: Descripción de las variables más importantes (edad, género, diagnóstico).
+5.  **`### 💡 Conclusiones y Recomendaciones`**: Idoneidad del dataset para IA y posibles sesgos.
+
+Basa todas tus afirmaciones en los datos del JSON. Sé profesional y objetivo.
+"""
+
+class ClinicalAnalyzerConfig(BaseAgentConfig):
+    name: str = "Analizador Clínico"
+    description: str = "Especialista en análisis estadístico y exploratorio de datos médicos."
+    system_prompt: str = ANALYZER_SYSTEM_PROMPT
+    max_tokens: int = 2500
 
 class ClinicalAnalyzerAgent(BaseLLMAgent):
-    """Agente especializado en análisis de datos clínicos"""
-    
     def __init__(self):
-        config = BaseAgentConfig(
-            name="Analista Clínico",
-            description="Especialista en análisis de datasets médicos y extracción de patrones clínicos",
-            system_prompt="""Eres un agente especializado en análisis de datos clínicos. Tu misión es:
+        super().__init__(ClinicalAnalyzerConfig(), tools=[])  # Explícitamente sin herramientas
 
-1. **Analizar datasets médicos** con enfoque en:
-   - Patrones demográficos (edad, sexo, distribuciones)
-   - Diagnósticos y comorbilidades frecuentes
-   - Patrones de medicación y tratamientos
-   - Tendencias temporales en los datos
-   - Variables clínicas críticas
+    async def process(self, input_text: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
+        # El análisis se dispara por `analyze_dataset`, no por `process`.
+        if context and context.get("universal_analysis"):
+            return await self.analyze_dataset(None, context)
+        return {"message": "El analizador necesita un análisis universal previo.", "agent": self.name, "error": True}
 
-2. **Identificar características relevantes**:
-   - Variables con alta correlación clínica
-   - Outliers médicamente significativos
-   - Distribuciones anómalas que requieren atención
-   - Calidad y completitud de los datos
+    async def analyze_dataset(self, dataframe, context: Dict[str, Any] = None) -> Dict[str, Any]:
+        universal_analysis_result = context.get("universal_analysis")
+        if not universal_analysis_result:
+            return {"message": "Error: No se encontró el resultado del análisis universal.", "agent": self.name, "error": True}
 
-3. **Comunicar hallazgos de manera clara**:
-   - Usa terminología médica apropiada pero accesible
-   - Destaca patrones clínicamente relevantes
-   - Sugiere próximos pasos para generación sintética
-   - Identifica posibles sesgos en los datos
-
-4. **Contexto de COVID-19**: Presta especial atención a:
-   - Criterios de ingreso y severidad
-   - Patrones de medicación COVID-específicos
-   - Evolución temporal de pacientes
-   - Factores de riesgo y comorbilidades
-
-Responde de manera profesional, concisa y orientada a la acción. Siempre pregunta si se necesita análisis adicional.""",
-            temperature=0.1
-        )
-        super().__init__(config)
-    
-    async def analyze_dataset(self, dataframe: pd.DataFrame, context: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Analiza un dataset específico"""
-
-        # 1. Extraer patrones reales con DataExtractor
-        extractor = DataExtractor()
-        extraction_results = extractor.extract_patterns(dataframe)
-
-        # 2. Preparar prompt para el LLM usando los resultados reales
-        prompt = f"""Analiza este dataset clínico:
-
-**Patrones clínicos extraídos automáticamente:**
-{extraction_results['clinical_patterns']}
-
-**Estadísticas generales:**
-{extraction_results['statistics']}
-
-Por favor interpreta estos hallazgos, identifica limitaciones y sugiere próximos pasos para generación sintética.
-
-Contexto adicional: {context}
-"""
-        return await self.process(prompt, context)
+        prompt_input = json.dumps(universal_analysis_result, indent=2)
+        
+        # Construir el diccionario de entrada para el prompt
+        prompt_variables = {
+            "input": prompt_input,
+        }
+        
+        # Agregar chat_history si hay mensajes en memoria
+        if self.memory.chat_memory.messages:
+            prompt_variables["chat_history"] = self.memory.chat_memory.messages
+        
+        llm_response = await self.agent_executor.ainvoke(prompt_variables)
+        
+        return {
+            "message": llm_response.content,
+            "agent": self.name,
+            "analysis_complete": True
+        }

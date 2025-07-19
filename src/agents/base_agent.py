@@ -1,131 +1,120 @@
-from typing import Any, Dict, List, Optional, Union
-from langchain.agents import AgentExecutor, create_openai_functions_agent
-from langchain.tools import BaseTool
-from langchain_openai import AzureChatOpenAI  # Cambiar import
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.memory import ConversationBufferMemory
-from langchain.schema import BaseMessage
+"""
+Agente Base - Clase padre para todos los agentes especializados del sistema.
+
+Este módulo define la estructura base y funcionalidades comunes que todos
+los agentes médicos especializados deben implementar.
+"""
+
+import asyncio
+from abc import ABC, abstractmethod
+from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field
 import os
 from dotenv import load_dotenv
 
+# Importaciones de LangChain
+from langchain_openai import AzureChatOpenAI
+from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.agents import AgentExecutor, create_openai_functions_agent
+from langchain.tools import BaseTool
+from langchain.memory import ConversationBufferMemory
+
+# Cargar las variables de entorno desde el archivo .env
+# Esto asegura que estén disponibles tan pronto como se importe este módulo.
 load_dotenv()
 
 class BaseAgentConfig(BaseModel):
-    """Configuración base para agentes"""
+    """Configuración base para todos los agentes."""
     name: str
     description: str
-    system_prompt: str
-    temperature: float = 0.1
+    system_prompt: str = ""
+    max_tokens: int = 1500
+    temperature: float = 0.2
     model: str = "gpt-4"
-    max_tokens: int = 2000
+    
+    class Config:
+        arbitrary_types_allowed = True
 
-class BaseLLMAgent:
-    """Agente base que usa LLM con Azure OpenAI"""
+class BaseLLMAgent(ABC):
+    """
+    Clase base abstracta para todos los agentes LLM especializados.
+    Define la interfaz común y funcionalidades compartidas.
+    """
     
     def __init__(self, config: BaseAgentConfig, tools: List[BaseTool] = None):
         self.config = config
         self.tools = tools or []
+        self.name = config.name
+        self.description = config.description
         
-        # Verificar configuración de Azure
         azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-        azure_api_key = os.getenv("AZURE_OPENAI_API_KEY")
-        azure_deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT")
-        azure_api_version = os.getenv("AZURE_OPENAI_API_VERSION")
+        api_key = os.getenv("AZURE_OPENAI_API_KEY")
+        deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT")
+        api_version = os.getenv("AZURE_OPENAI_API_VERSION")
         
-        if not all([azure_endpoint, azure_api_key, azure_deployment]):
-            raise ValueError("Configuración de Azure OpenAI incompleta")
+        if not all([azure_endpoint, api_key, deployment, api_version]):
+            raise ValueError("Configuración de Azure OpenAI incompleta en el entorno.")
         
         try:
-            # Inicializar Azure OpenAI
             self.llm = AzureChatOpenAI(
-                azure_deployment=azure_deployment,
+                azure_deployment=deployment,
                 azure_endpoint=azure_endpoint,
-                api_key=azure_api_key,
-                api_version=azure_api_version,
+                api_key=api_key,
+                api_version=api_version,
                 temperature=config.temperature,
                 max_tokens=config.max_tokens,
-                model=config.model
             )
             
-            # Crear prompt template
-            self.prompt = ChatPromptTemplate.from_messages([
-                ("system", config.system_prompt),
-                MessagesPlaceholder(variable_name="chat_history"),
-                ("human", "{input}"),
-                MessagesPlaceholder(variable_name="agent_scratchpad"),
-            ])
+            if self.config.system_prompt:
+                if self.tools:
+                    # Prompt completo para agentes con herramientas
+                    self.prompt = ChatPromptTemplate.from_messages([
+                        ("system", self.config.system_prompt),
+                        MessagesPlaceholder(variable_name="chat_history", optional=True),
+                        ("human", "{input}"),
+                        MessagesPlaceholder(variable_name="agent_scratchpad", optional=True),
+                    ])
+                    self.agent = create_openai_functions_agent(llm=self.llm, tools=self.tools, prompt=self.prompt)
+                    self.agent_executor = AgentExecutor(agent=self.agent, tools=self.tools, verbose=True)
+                else:
+                    # Prompt simple para agentes sin herramientas
+                    self.prompt = ChatPromptTemplate.from_messages([
+                        ("system", self.config.system_prompt),
+                        MessagesPlaceholder(variable_name="chat_history", optional=True),
+                        ("human", "{input}"),
+                    ])
+                    # Si no hay herramientas, creamos una cadena simple de LLM
+                    self.agent_executor = self.prompt | self.llm
             
-            # Crear agente
-            if self.tools:
-                self.agent = create_openai_functions_agent(
-                    llm=self.llm,
-                    tools=self.tools,
-                    prompt=self.prompt
-                )
-                self.agent_executor = AgentExecutor(
-                    agent=self.agent,
-                    tools=self.tools,
-                    verbose=True,
-                    return_intermediate_steps=True,
-                    handle_parsing_errors=True
-                )
-            else:
-                self.agent_executor = None
-            
-            # Memoria para conversación
-            self.memory = ConversationBufferMemory(
-                memory_key="chat_history",
-                return_messages=True
-            )
-            
+            self.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+            print(f"✅ Agente '{self.name}' inicializado correctamente.")
+
         except Exception as e:
-            raise RuntimeError(f"Error inicializando agente {config.name}: {e}")
-    
+            raise RuntimeError(f"Error inicializando el LLM para el agente '{self.config.name}': {e}")
+
+    @abstractmethod
     async def process(self, input_text: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Procesa input del usuario y retorna respuesta"""
-        try:
-            if self.agent_executor:
-                # Usar agente con tools
-                result = await self.agent_executor.ainvoke({
-                    "input": input_text,
-                    "chat_history": self.memory.chat_memory.messages,
-                    "context": context or {}
-                })
-                
-                response = {
-                    "message": result["output"],
-                    "intermediate_steps": result.get("intermediate_steps", []),
-                    "agent": self.config.name
-                }
-            else:
-                # LLM directo sin tools
-                messages = [
-                    ("system", self.config.system_prompt),
-                    ("human", f"Context: {context}\n\nUser: {input_text}")
-                ]
-                
-                result = await self.llm.ainvoke(messages)
-                response = {
-                    "message": result.content,
-                    "agent": self.config.name
-                }
-            
-            # Guardar en memoria
-            self.memory.save_context(
-                {"input": input_text},
-                {"output": response["message"]}
-            )
-            
-            return response
-            
-        except Exception as e:
-            return {
-                "message": f"Error en {self.config.name}: {str(e)}",
-                "error": True,
-                "agent": self.config.name
-            }
-    
-    def clear_memory(self):
-        """Limpia la memoria de conversación"""
-        self.memory.clear()
+        """
+        Método abstracto principal para procesar la entrada del usuario.
+        Este método DEBE ser implementado por todas las clases hijas.
+        """
+        pass
+
+    async def analyze_dataset(self, dataframe, context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Método para análisis de datasets. NO es abstracto.
+        Las clases hijas pueden sobreescribirlo si tienen esta capacidad.
+        """
+        return {
+            "message": f"El agente '{self.name}' no tiene la capacidad de analizar datasets directamente.",
+            "agent": self.name,
+            "error": True
+        }
+
+    def get_status(self) -> Dict[str, Any]:
+        """Obtiene el estado actual del agente."""
+        return {
+            "name": self.name,
+            "description": self.description,
+            "config": self.config.model_dump()
+        }

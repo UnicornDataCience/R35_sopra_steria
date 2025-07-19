@@ -6,18 +6,18 @@ Este proyecto utiliza técnicas de inteligencia artificial, incluyendo modelos g
 
 ## Características Principales
 
-- 🧬 **Generación Sintética Tabular**: Creación de datasets estructurados que preservan correlaciones y distribuciones estadísticas
-- 🔍 **Análisis Exploratorio**: Herramientas para comprender y visualizar patrones en datos clínicos
-- 🤖 **Agentes de IA Especializados**: Sistema multi-agente para análisis, generación, validación y evaluación
-- 📊 **Interfaz Interactiva**: Dashboard web para interactuar con los datos y generar nuevos registros
-- ✅ **Validación Clínica**: Verificación automática de la coherencia médica de los datos generados
-- 📈 **Evaluación de Calidad**: Métricas para valorar la utilidad y el realismo de los datos sintéticos
+- 🧬 **Generación Sintética Tabular**: Creación de datasets estructurados que preservan correlaciones y distribuciones estadísticas.
+- 🔍 **Análisis Exploratorio**: Herramientas para comprender y visualizar patrones en datos clínicos.
+- 🤖 **Agentes de IA Especializados**: Sistema multi-agente para análisis, generación, validación y evaluación.
+- 📊 **Interfaz Interactiva**: Dashboard web para interactuar con los datos y generar nuevos registros.
+- ✅ **Validación Clínica**: Verificación automática de la coherencia médica de los datos generados.
+- 📈 **Evaluación de Calidad**: Métricas para valorar la utilidad y el realismo de los datos sintéticos.
 
 ## Requisitos
 
-- **Python**: 3.12.7 o superior
+- **Python**: 3.11 o superior
 - **Sistema Operativo**: Compatible con Windows, macOS y Linux
-- **Memoria**: Mínimo 4GB RAM (8GB+ recomendado)
+- **Memoria**: Mínimo 8GB RAM (16GB+ recomendado)
 - **Espacio en disco**: 2GB para instalación completa
 - **API Key**: Cuenta en Azure OpenAI (opcional para funcionalidades LLM)
 
@@ -46,7 +46,10 @@ cd R35_sopra_steria
 
 # Crear un entorno virtual
 python -m venv venv
-source venv/bin/activate  # En Windows: venv\Scripts\activate
+# En Windows
+venv\Scripts\activate
+# En macOS/Linux
+source venv/bin/activate
 
 # Instalar dependencias
 pip install -r requirements.txt
@@ -54,106 +57,105 @@ pip install -r requirements.txt
 
 ### Configuración de Variables de Entorno
 
-Para funcionalidades avanzadas que utilizan LLMs, crea un archivo .env en la raíz del proyecto:
+Para funcionalidades avanzadas que utilizan LLMs, crea un archivo `.env` en la raíz del proyecto con el siguiente contenido:
 
 ```
 # Azure OpenAI
-AZURE_OPENAI_API_KEY=your_api_key_here
-AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
-AZURE_OPENAI_DEPLOYMENT=your_deployment_name
-AZURE_OPENAI_API_VERSION=2024-02-01
+AZURE_OPENAI_API_KEY="your_api_key_here"
+AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
+AZURE_OPENAI_DEPLOYMENT="your_deployment_name"
+AZURE_OPENAI_API_VERSION="2024-02-01"
 ```
 
 ## Uso
 
 ### 1. Interfaz de Chat para Datos Sintéticos
 
+Para iniciar la aplicación, ejecuta la interfaz de Streamlit:
+
 ```bash
-# Iniciar la interfaz de chat
 streamlit run interfaces/chat_llm.py
 ```
 
 Este comando abrirá una aplicación web donde podrás:
-- Cargar archivos de datos reales
-- Analizar las características clínicas
-- Generar datos sintéticos
-- Validar calidad médica
-- Descargar resultados
+- Cargar archivos de datos reales.
+- Analizar las características clínicas.
+- Generar datos sintéticos.
+- Validar la calidad médica de los datos.
+- Descargar los resultados.
 
-### 2. Generación por Línea de Comandos
+### 2. Análisis de Datos (Jupyter Notebooks)
 
-```bash
-# Generar datos sintéticos desde línea de comandos
-python src/generation/sdv_generator.py --input data/real/df_final.csv --output data/synthetic/ --rows 1000
-```
-
-### 3. Análisis de Datos (Jupyter Notebooks)
+Para explorar los notebooks de análisis y modelado:
 
 ```bash
-# Iniciar Jupyter para explorar los notebooks
-jupyter notebook notebooks/
+# Iniciar Jupyter Lab o Jupyter Notebook
+jupyter lab
+# o
+jupyter notebook
 ```
 
-Explora los notebooks para:
-- EDA.ipynb - Análisis exploratorio de datos
-- umap_hdbscan_faiss.ipynb - Reducción de dimensionalidad y clustering
-- FAISS.ipynb - Búsqueda de similitud en datos clínicos
+Una vez iniciado, navega a la carpeta `notebooks/` para explorar los análisis existentes, como:
+- `EDA.ipynb`: Análisis exploratorio de datos.
+- `umap_hdbscan_faiss.ipynb`: Reducción de dimensionalidad y clustering.
+- `FAISS.ipynb`: Búsqueda de similitud en datos clínicos.
 
 ## Estructura del Proyecto
 
 ```
-r35_historia_clinica_sintetica/
-├── configs/                    # Parámetros YAML, configuración de agentes y generación
+R35_sopra_steria/
 ├── data/
-│   ├── real/                   # Dataset original procesado
+│   ├── real/                   # Datasets originales procesados
 │   └── synthetic/              # Cohortes sintéticas generadas
 ├── docs/                       # Documentación del proyecto
-├── models/                     # Modelos entrenados o checkpoints LLM
-├── notebooks/                  # Análisis y validaciones exploratorias
-├── outputs/                    # Historias clínicas generadas, informes de validación
-├── src/
-│   ├── agents/                 # Sistema multi-agente para procesamiento de datos
-│   ├── extraction/             # Extracción y vectorización de patrones
-│   ├── generation/             # Módulos SDV, CTGAN, creación de pacientes
-│   ├── validation/             # Verificación clínica automatizada
-│   ├── simulation/             # Evolución temporal sintética
-│   ├── narration/              # Prompts y generación de texto con LLM
-│   ├── evaluation/             # Métricas de utilidad, realismo, plausibilidad
-│   └── orchestration/          # Grafo LangGraph y control de agentes
 ├── interfaces/                 # Interfaces de usuario (Streamlit, CLI)
-├── tests/                      # Tests unitarios y de integración
-└── utils/                      # Utilidades y herramientas auxiliares
+├── models/                     # Modelos generativos entrenados (checkpoints)
+├── notebooks/                  # Notebooks para análisis y experimentación
+├── outputs/                    # Salidas generadas (historias clínicas, informes)
+├── src/
+│   ├── agents/                 # Sistema multi-agente (analizador, generador, etc.)
+│   ├── config/                 # Configuración de Azure y otros servicios
+│   ├── evaluation/             # Módulos para evaluar la calidad de los datos
+│   ├── extraction/             # Extracción de patrones y características
+│   ├── generation/             # Módulos de generación (SDV, CTGAN, TVAE)
+│   ├── narration/              # Generación de texto narrativo con LLMs
+│   ├── orchestration/          # Orquestación del flujo de trabajo con LangGraph
+│   ├── simulation/             # Simulación de la progresión de pacientes
+
+│   ├── utils/                  # Funciones y herramientas auxiliares
+│   └── validation/             # Reglas de validación clínica y de esquema
+├── tests/                      # Pruebas unitarias y de integración
+├── .gitignore                  # Archivos y carpetas ignorados por Git
+├── Pipfile                     # Dependencias del proyecto para Pipenv
+├── requirements.txt            # Lista de dependencias para pip
+└── README.md                   # Este archivo
 ```
 
 ## Componentes Principales
 
-### Módulo de Generación
+### Módulo de Generación (`src/generation`)
+El núcleo del sistema utiliza modelos generativos como **SDV (Synthetic Data Vault)**, **CTGAN (Conditional Tabular GAN)** y **TVAE (Tabular VAE)** para producir datos sintéticos de alta fidelidad.
 
-El núcleo del sistema utiliza modelos generativos como SDV (Synthetic Data Vault), CTGAN (GAN condicional tabular), y técnicas de impresión basadas en LLM para producir datos sintéticos de alta fidelidad estadística y clínica.
+### Sistema Multi-Agente (`src/agents`)
+La arquitectura se basa en agentes especializados con responsabilidades claras:
+- **Coordinador**: Orquesta el flujo de trabajo global.
+- **Analizador**: Extrae patrones de los datos originales.
+- **Generador**: Crea los datos sintéticos.
+- **Validador**: Verifica la coherencia clínica y estructural.
+- **Simulador**: Modela la evolución temporal de los pacientes.
+- **Evaluador**: Mide la calidad de los datos generados.
 
-### Sistema Multi-Agente
-
-La arquitectura se basa en agentes especializados con responsabilidades específicas:
-
-- **Coordinador**: Orquesta el flujo de trabajo global
-- **Analizador**: Extrae patrones de los datos originales
-- **Generador**: Crea los datos sintéticos
-- **Validador**: Verifica la coherencia clínica
-- **Simulador**: Modela la evolución temporal de pacientes
-- **Evaluador**: Mide la calidad de los datos generados
-
-### Interfaz de Usuario
-
-Utilizamos Streamlit para crear una interfaz intuitiva que permite a usuarios sin conocimientos técnicos interactuar con el sistema a través de comandos en lenguaje natural y visualizaciones interactivas.
+### Interfaz de Usuario (`interfaces/`)
+Utilizamos **Streamlit** para crear una interfaz web intuitiva que permite a los usuarios interactuar con el sistema, generar datos y visualizar resultados sin necesidad de conocimientos técnicos avanzados.
 
 ## Soporte y Mantenimiento
 
-- **Problemas y sugerencias**: Abrir un issue en el repositorio de GitHub
-- **Documentación**: Ver carpeta docs para guías detalladas
+- **Problemas y sugerencias**: Abrir un *issue* en el repositorio de GitHub.
+- **Documentación**: Consultar la carpeta `docs/` para guías detalladas.
 
 ## Licencia
 
-Este proyecto está licenciado bajo los términos especificados en el archivo LICENSE.
+Este proyecto está licenciado bajo los términos especificados en el archivo `LICENSE`.
 
 ## Agradecimientos
 
@@ -162,4 +164,3 @@ Este proyecto fue desarrollado como parte de un Trabajo Fin de Máster (TFM) en 
 ---
 
 &copy; 2024 Patientia - Generador de Historias Clínicas Sintéticas
-
