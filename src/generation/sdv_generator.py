@@ -1,5 +1,6 @@
 import pandas as pd
 from sdv.single_table import GaussianCopulaSynthesizer
+
 from sdv.metadata import SingleTableMetadata
 import os
 import sys
@@ -15,62 +16,82 @@ class SDVGenerator:
     def __init__(self, sample_size=1000):
         self.sample_size = sample_size
 
-    def generate(self, real_df, sample_size=None, is_covid_dataset=False):
+    def generate(self, real_df, sample_size=None, is_covid_dataset=False, selected_columns=None):
         n_samples = sample_size if sample_size is not None else self.sample_size
-        # El DataFrame ya viene como parámetro, no necesitamos leerlo desde archivo
-        # real_df = pd.read_csv(
-        #     real_df_path,
-        #     sep=',',
-        #     low_memory=False,
-        #     encoding="utf-8"
-        # )
-        columnas = ['PATIENT ID', 'EDAD/AGE', 'SEXO/SEX', 'DIAG ING/INPAT',
-                    'FARMACO/DRUG_NOMBRE_COMERCIAL/COMERCIAL_NAME', 'UCI_DIAS/ICU_DAYS',
-                    'TEMP_ING/INPAT', 'SAT_02_ING/INPAT', 'RESULTADO/VAL_RESULT',
-                    'MOTIVO_ALTA/DESTINY_DISCHARGE_ING']
-        # Filtrar solo las columnas que existen en el DataFrame
-        existing_cols = [col for col in columnas if col in real_df.columns]
-        if existing_cols:
-            real_df = real_df[existing_cols]
-        real_df = real_df[real_df['DIAG ING/INPAT'].str.contains('COVID19', na=False, case=False)]
-        real_df.fillna(0, inplace=True)
-        real_df['EDAD/AGE'] = pd.to_numeric(real_df['EDAD/AGE'], errors='coerce').fillna(0).astype(int)
-        real_df['PATIENT ID'] = pd.to_numeric(real_df['PATIENT ID'], errors='coerce').fillna(0).astype(int)
-        real_df['UCI_DIAS/ICU_DAYS'] = pd.to_numeric(real_df['UCI_DIAS/ICU_DAYS'], errors='coerce').fillna(0).astype(int)
-        real_df['TEMP_ING/INPAT'] = pd.to_numeric(real_df['TEMP_ING/INPAT'], errors='coerce').fillna(0).astype(float)
-        real_df['SAT_02_ING/INPAT'] = pd.to_numeric(real_df['SAT_02_ING/INPAT'], errors='coerce').fillna(0).astype(int)
-        real_df['UCI_DIAS/ICU_DAYS'] = real_df['UCI_DIAS/ICU_DAYS'].replace(0, round(real_df['UCI_DIAS/ICU_DAYS'].mean()))
-        real_df['EDAD/AGE'] = real_df['EDAD/AGE'].replace(0, round((real_df['EDAD/AGE'].mean())))
-        real_df['TEMP_ING/INPAT'] = real_df['TEMP_ING/INPAT'].replace(0, round(real_df['TEMP_ING/INPAT'].mean()))
-        real_df['PATIENT ID'] = real_df['PATIENT ID'].replace(0, round(real_df['PATIENT ID'].mean()))
-        real_df['SAT_02_ING/INPAT'] = real_df['SAT_02_ING/INPAT'].replace(0, round(real_df['SAT_02_ING/INPAT'].mean()))
-        real_df['MOTIVO_ALTA/DESTINY_DISCHARGE_ING'] = real_df['MOTIVO_ALTA/DESTINY_DISCHARGE_ING'].fillna('Domicilio')
-        real_df['MOTIVO_ALTA/DESTINY_DISCHARGE_ING'] = real_df['MOTIVO_ALTA/DESTINY_DISCHARGE_ING'].replace(0, 'Domicilio')
+        
+        # Si hay columnas seleccionadas, el DataFrame ya debería estar filtrado
+        # Solo aplicar el filtrado legacy si NO hay columnas seleccionadas Y es COVID
+        if selected_columns is None and is_covid_dataset:
+            columnas_covid = ['PATIENT ID', 'EDAD/AGE', 'SEXO/SEX', 'DIAG ING/INPAT',
+                              'FARMACO/DRUG_NOMBRE_COMERCIAL/COMERCIAL_NAME', 'UCI_DIAS/ICU_DAYS',
+                              'TEMP_ING/INPAT', 'SAT_02_ING/INPAT', 'RESULTADO/VAL_RESULT',
+                              'MOTIVO_ALTA/DESTINY_DISCHARGE_ING']
+            
+            # Filtrar solo las columnas que existen en el DataFrame
+            existing_covid_cols = [col for col in columnas_covid if col in real_df.columns]
+            if len(existing_covid_cols) < len(columnas_covid):
+                print(f"⚠️ Advertencia: Faltan algunas columnas COVID-19 esperadas. Se usarán: {existing_covid_cols}")
+            
+            real_df = real_df[existing_covid_cols].copy()
+            print(f"DEBUG: SDV - DataFrame filtrado a {len(real_df.columns)} columnas para COVID-19.")
+
+            # Filtrar solo pacientes COVID-19 si la columna de diagnóstico existe
+            if 'DIAG ING/INPAT' in real_df.columns:
+                real_df = real_df[real_df['DIAG ING/INPAT'].astype(str).str.contains('COVID19', na=False, case=False)].copy()
+                print(f"DEBUG: SDV - DataFrame filtrado por contenido COVID-19: {len(real_df)} filas.")
+        elif selected_columns:
+            print(f"🎯 SDV - Usando {len(real_df.columns)} columnas seleccionadas por MedicalColumnSelector")
+
+        # Procesamiento dinámico de datos
+        real_df = real_df.fillna(0)
+        
+        # Convertir columnas numéricas automáticamente basado en patrones
+        numeric_patterns = ['edad', 'age', 'dias', 'days', 'temp', 'sat', 'id']
+        for col in real_df.columns:
+            col_lower = col.lower()
+            if any(pattern in col_lower for pattern in numeric_patterns):
+                if 'temp' in col_lower:
+                    real_df[col] = pd.to_numeric(real_df[col], errors='coerce').fillna(0).astype(float)
+                else:
+                    real_df[col] = pd.to_numeric(real_df[col], errors='coerce').fillna(0).astype(int)
+        
+        # Reemplazar 0s por valores medios en todas las columnas numéricas
+        for col in real_df.columns:
+            if real_df[col].dtype in ['int64', 'float64']:
+                mean_val = real_df[col].mean()
+                if pd.isna(mean_val):
+                    mean_val = 0 # Fallback si la media es NaN
+                real_df[col] = real_df[col].replace(0, round(mean_val) if real_df[col].dtype == 'int64' else mean_val)
+
+        # Manejar columnas categóricas con patrones de descarga/destino
+        discharge_patterns = ['motivo', 'destiny', 'alta']
+        for col in real_df.columns:
+            col_lower = col.lower()
+            if any(pattern in col_lower for pattern in discharge_patterns):
+                real_df[col] = real_df[col].fillna('Domicilio')
+                real_df[col] = real_df[col].replace(0, 'Domicilio')
+
+        # Si el DataFrame está vacío después del filtrado, no se puede generar
+        if real_df.empty:
+            print("❌ SDV - DataFrame vacío después del filtrado. No se puede generar datos sintéticos.")
+            return pd.DataFrame() # Devolver DataFrame vacío
+            
         metadata = SingleTableMetadata()
-        metadata = metadata.detect_from_dataframe(
-            data=real_df,
-            table_name='my_table_sdv',
-            infer_sdtypes=False
-        )
-        column_types = {
-            "EDAD/AGE": "numerical",
-            "SEXO/SEX": "categorical",
-            "DIAG ING/INPAT": "categorical",
-            "FARMACO/DRUG_NOMBRE_COMERCIAL/COMERCIAL_NAME": "categorical",
-            "UCI_DIAS/ICU_DAYS": "numerical",
-            "TEMP_ING/INPAT": "numerical",
-            "SAT_02_ING/INPAT": "numerical",
-            "RESULTADO/VAL_RESULT": "categorical",
-            "MOTIVO_ALTA/DESTINY_DISCHARGE_ING": "categorical"
-        }
-        for col, sdtype in column_types.items():
-            metadata.update_column(
-                column_name=col,
-                sdtype=sdtype)
-        metadata.update_column(
-            column_name='PATIENT ID',
-            sdtype='id',
-            regex_format='SYN-[0-9]{4}')
+        metadata.detect_from_dataframe(data=real_df)
+        
+        # Sistema dinámico de tipos de columnas
+        for col in real_df.columns:
+            col_lower = col.lower()
+            
+            # Determinar tipo basado en patrones
+            if any(pattern in col_lower for pattern in numeric_patterns):
+                if 'id' in col_lower:
+                    metadata.update_column(column_name=col, sdtype='id', regex_format='SYN-[0-9]{4}')
+                else:
+                    metadata.update_column(column_name=col, sdtype='numerical')
+            else:
+                # Para columnas no numéricas, categórico
+                metadata.update_column(column_name=col, sdtype='categorical')
         metadata.validate()
         # Usar nombre único para metadata temporal y eliminar tras uso
         tmp_json = f"metadata_sdv_{uuid.uuid4().hex}.json"

@@ -33,6 +33,16 @@ class SyntheticGeneratorAgent(BaseLLMAgent):
 
         try:
             synthetic_data = await self.generate_synthetic_data(original_data, num_samples, model_type, context)
+            
+            # Crear información de generación detallada
+            generation_info = {
+                "model_type": model_type,
+                "num_samples": len(synthetic_data),
+                "columns_used": len(synthetic_data.columns),
+                "selection_method": "MedicalColumnSelector" if context.get('selected_columns') else "Default",
+                "timestamp": pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')
+            }
+            
             return {
                 "message": f"""Se han generado exitosamente {len(synthetic_data)} registros sintéticos con el modelo {model_type.upper()}.
 
@@ -41,7 +51,8 @@ class SyntheticGeneratorAgent(BaseLLMAgent):
 - **Registros Generados:** {len(synthetic_data)}
 - **Dataset Base:** {context.get('filename', 'N/A')} ({len(original_data)} registros)""",
                 "agent": self.name,
-                "synthetic_data": synthetic_data
+                "synthetic_data": synthetic_data,
+                "generation_info": generation_info
             }
         except Exception as e:
             return {"message": f"Error durante la generación de datos: {e}", "agent": self.name, "error": True}
@@ -50,11 +61,24 @@ class SyntheticGeneratorAgent(BaseLLMAgent):
         """Genera datos sintéticos basados en el dataset original."""
         is_covid_dataset = context.get('universal_analysis', {}).get('dataset_type') == 'COVID-19'
         
+        # Obtener columnas seleccionadas del contexto
+        selected_columns = context.get('selected_columns')
+        
+        # Filtrar DataFrame si hay columnas seleccionadas
+        if selected_columns:
+            # Verificar que las columnas seleccionadas existen en el DataFrame
+            available_columns = [col for col in selected_columns if col in original_data.columns]
+            if available_columns:
+                print(f"🎯 Usando {len(available_columns)} columnas seleccionadas: {available_columns}")
+                original_data = original_data[available_columns].copy()
+            else:
+                print("⚠️ Ninguna de las columnas seleccionadas existe en el DataFrame. Usando dataset completo.")
+        
         if model_type == 'ctgan':
-            return self.ctgan_generator.generate(original_data, num_samples, is_covid_dataset)
+            return self.ctgan_generator.generate(original_data, num_samples, is_covid_dataset, selected_columns)
         elif model_type == 'tvae':
-            return self.tvae_generator.generate(original_data, num_samples, is_covid_dataset)
+            return self.tvae_generator.generate(original_data, num_samples, is_covid_dataset, selected_columns)
         elif model_type == 'sdv':
-            return self.sdv_generator.generate(original_data, num_samples, is_covid_dataset)
+            return self.sdv_generator.generate(original_data, num_samples, is_covid_dataset, selected_columns)
         else:
             raise ValueError(f"Modelo '{model_type}' no soportado.")

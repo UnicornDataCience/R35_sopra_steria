@@ -16,11 +16,14 @@ class CTGANGenerator:
     def __init__(self, sample_size=10):
         self.sample_size = sample_size
 
-    def generate(self, real_df, sample_size=None, is_covid_dataset=False):
+    def generate(self, real_df, sample_size=None, is_covid_dataset=False, selected_columns=None):
         n_samples = sample_size if sample_size is not None else self.sample_size
         
-        # Si es un dataset COVID, aplicar el filtrado de 10 columnas
-        if is_covid_dataset:
+        # Si hay columnas seleccionadas, el DataFrame ya debería estar filtrado
+        # pero como medida de seguridad, no aplicamos filtrado adicional aquí
+        
+        # Solo aplicar el filtrado legacy si NO hay columnas seleccionadas Y es COVID
+        if selected_columns is None and is_covid_dataset:
             columnas_covid = ['PATIENT ID', 'EDAD/AGE', 'SEXO/SEX', 'DIAG ING/INPAT',
                               'FARMACO/DRUG_NOMBRE_COMERCIAL/COMERCIAL_NAME', 'UCI_DIAS/ICU_DAYS',
                               'TEMP_ING/INPAT', 'SAT_02_ING/INPAT', 'RESULTADO/VAL_RESULT',
@@ -38,6 +41,8 @@ class CTGANGenerator:
             if 'DIAG ING/INPAT' in real_df.columns:
                 real_df = real_df[real_df['DIAG ING/INPAT'].astype(str).str.contains('COVID19', na=False, case=False)].copy()
                 print(f"DEBUG: CTGAN - DataFrame filtrado por contenido COVID-19: {len(real_df)} filas.")
+        elif selected_columns:
+            print(f"🎯 CTGAN - Usando {len(real_df.columns)} columnas seleccionadas por MedicalColumnSelector")
 
         # Rellenar nulos y corregir tipos (aplicar a las columnas que queden)
         # Asegurarse de que las columnas existan antes de intentar rellenar/convertir
@@ -71,37 +76,33 @@ class CTGANGenerator:
             return pd.DataFrame() # Devolver DataFrame vacío
 
         metadata = SingleTableMetadata()
-        metadata.detect_from_dataframe(
-            data=real_df,
-            table_name='my_table_ctgan',
-            infer_sdtypes=False
-        )
+        metadata.detect_from_dataframe(data=real_df)
         
-        # Definir tipos de columnas manualmente para mayor precisión
-        # Solo para las columnas que realmente están en el DataFrame filtrado
-        column_types = {
-            "EDAD/AGE": "numerical",
-            "SEXO/SEX": "categorical",
-            "DIAG ING/INPAT": "categorical",
-            "FARMACO/DRUG_NOMBRE_COMERCIAL/COMERCIAL_NAME": "categorical",
-            "UCI_DIAS/ICU_DAYS": "numerical",
-            "TEMP_ING/INPAT": "numerical",
-            "SAT_02_ING/INPAT": "numerical",
-            "RESULTADO/VAL_RESULT": "categorical",
-            "MOTIVO_ALTA/DESTINY_DISCHARGE_ING": "categorical"
-        }
+        # Sistema dinámico de tipos de columnas basado en nombres comunes
+        # Tipos numéricos típicos
+        numeric_patterns = ['edad', 'age', 'dias', 'days', 'temp', 'sat', 'id']
+        # Tipos categóricos típicos  
+        categorical_patterns = ['sexo', 'sex', 'diag', 'farmaco', 'drug', 'resultado', 'result', 'motivo', 'destiny']
         
-        for col, sdtype in column_types.items():
-            if col in real_df.columns: # Solo actualizar si la columna existe
-                metadata.update_column(
-                    column_name=col,
-                    sdtype=sdtype)
-        
-        if 'PATIENT ID' in real_df.columns: # Solo actualizar si la columna existe
-            metadata.update_column(
-                column_name='PATIENT ID',
-                sdtype='id',
-                regex_format='SYN-[0-9]{4}')
+        # Definir tipos de columnas automáticamente
+        for col in real_df.columns:
+            col_lower = col.lower()
+            
+            # Determinar tipo basado en patrones
+            if any(pattern in col_lower for pattern in numeric_patterns):
+                if 'id' in col_lower:
+                    metadata.update_column(column_name=col, sdtype='id', regex_format='SYN-[0-9]{4}')
+                else:
+                    metadata.update_column(column_name=col, sdtype='numerical')
+            elif any(pattern in col_lower for pattern in categorical_patterns):
+                metadata.update_column(column_name=col, sdtype='categorical')
+            else:
+                # Para columnas no reconocidas, dejar que SDV detecte automáticamente
+                # pero podemos forzar categórico si es objeto
+                if real_df[col].dtype == 'object':
+                    metadata.update_column(column_name=col, sdtype='categorical')
+                else:
+                    metadata.update_column(column_name=col, sdtype='numerical')
         
         metadata.validate()
         

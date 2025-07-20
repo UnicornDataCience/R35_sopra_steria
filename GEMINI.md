@@ -1,3 +1,25 @@
+# Propuesta de TFM – R35: Generación de Historias Clínicas Sintéticas
+
+## 🎯 ESTADO ACTUAL DEL SISTEMA (Actualizado)
+
+### ✅ PROBLEMAS RESUELTOS RECIENTEMENTE:
+1. **✅ Interfaz de bienvenida restaurada**: Interfaz estática con dos columnas explicando capacidades del sistema (no es un mensaje de chat)
+2. **✅ LLM conversacional funcional**: El sistema ahora responde correctamente a cualquier pregunta médica, no solo comandos de agentes
+3. **✅ Coordinador funcional**: Maneja correctamente saludos, preguntas médicas y parámetros de generación
+4. **✅ Selección de modelos**: CTGAN, TVAE, SDV funcionan correctamente con parámetros específicos
+5. **✅ Archivos organizados**: Tests movidos a carpeta `/tests`, archivos .md consolidados
+6. **✅ Orquestador mejorado**: Manejo robusto de errores y respuestas conversacionales
+
+### 🔧 ARQUITECTURA TÉCNICA CONFIRMADA:
+- **Interface**: `interfaces/chat_llm.py` - Streamlit UI modernizada con interfaz estática de bienvenida
+- **Orquestador**: `src/orchestration/langgraph_orchestrator.py` - LangGraph con manejo robusto de conversaciones
+- **Agentes**: Coordinador (conversacional + orquestador), Analyzer, Generator, Validator, Simulator, Evaluator
+- **Generadores**: CTGAN, TVAE, SDV con parámetros unificados
+- **Tests**: Organizados en carpeta `/tests/`
+- **Respuestas médicas**: Sistema responde a cualquier consulta médica general
+
+---
+
 # Propuesta de TFM – R35:
 
 **Título sugerido 1:** Generación de Historias Clínicas Sintéticas Mediante Agentes Inteligentes
@@ -1129,3 +1151,109 @@ PAT_003,23,F,Hypertension,88,150/95,Lisinopril
 
 
 
+# 🔧 SOLUCION: Problema "Modelo N/A" en Datos Sintéticos
+
+## 📋 PROBLEMA IDENTIFICADO
+
+El usuario reportó que en la interfaz aparecía información confusa:
+
+```
+Datos Sintéticos Generados
+Registros: 100
+Columnas: 10  
+Modelo: N/A
+
+Detalles de generación:
+Modelo: N/A
+Método: N/A
+Columnas utilizadas: N/A
+```
+
+## 🔍 CAUSA RAÍZ
+
+1. **Información incompleta**: Los agentes mock y reales no siempre devolvían `generation_info` completo
+2. **Manejo inconsistente**: Había dos lugares diferentes donde se procesaban los datos sintéticos, con lógica diferente
+3. **Falta de fallbacks**: No había valores por defecto cuando `generation_info` estaba vacío o incompleto
+
+## ✅ SOLUCIÓN IMPLEMENTADA
+
+### 1. Función Centralizada
+```python
+def handle_synthetic_data_response(response, context=None):
+    """Maneja la respuesta de generación sintética de forma centralizada"""
+```
+
+**Características:**
+- ✅ Manejo centralizado de datos sintéticos  
+- ✅ Creación automática de `generation_info` cuando falta
+- ✅ Validación y corrección de datos inconsistentes
+- ✅ Valores por defecto inteligentes
+
+### 2. Mejoras en Display
+
+**Antes:**
+```
+Modelo: N/A
+Método: N/A  
+Columnas utilizadas: N/A
+```
+
+**Después:**
+```
+Modelo: CTGAN / TVAE / SDV (o "GENERADO" si no se conoce)
+Método: "Método estándar" en lugar de N/A
+Columnas utilizadas: Número real de columnas del DataFrame
+```
+
+### 3. Fallbacks Inteligentes
+
+| Campo | Valor por Defecto | Lógica |
+|-------|------------------|--------|
+| `model_type` | "ctgan" | Del contexto o parámetros, fallback a CTGAN |
+| `num_samples` | `len(synthetic_df)` | Número real de filas generadas |
+| `columns_used` | `len(synthetic_df.columns)` | Número real de columnas |
+| `selection_method` | "Automático" / "Columnas seleccionadas" | Basado en contexto |
+| `timestamp` | Timestamp actual | Para archivos únicos |
+
+## 🎯 RESULTADO PARA EL USUARIO
+
+### Caso 1: Con información completa
+```
+Datos Sintéticos Generados
+Registros: 100
+Columnas: 5
+Modelo: TVAE
+
+🔬 Detalles de generación:
+Modelo utilizado: TVAE
+Registros generados: 100
+Método de selección: Columnas seleccionadas  
+Columnas utilizadas: 5
+```
+
+### Caso 2: Sin información (fallback)
+```
+Datos Sintéticos Generados
+Registros: 100
+Columnas: 10
+Modelo: GENERADO
+
+📊 Información de los datos:
+Datos sintéticos generados exitosamente
+Columnas: 10
+Método: Generación estándar
+```
+
+## 🔬 VALIDACIÓN
+
+- ✅ Función centralizada manejando todos los casos edge
+- ✅ Display consistente en ambas secciones del sidebar
+- ✅ Eliminación de mensajes confusos "N/A" 
+- ✅ Tests creados para validar el comportamiento
+
+## 📱 EXPERIENCIA DE USUARIO
+
+**Antes**: Confuso y técnico ("N/A" en todas partes)
+**Después**: Claro y profesional (información real o fallbacks útiles)
+
+El usuario ahora siempre verá información útil y comprensible, incluso cuando los datos técnicos internos no estén disponibles.

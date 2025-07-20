@@ -139,11 +139,16 @@ class MedicalAgentsOrchestrator:
         return state
 
     def _route_from_coordinator(self, state: AgentState) -> str:
-        intended_agent = state["coordinator_response"].get("agent")
-        if state["coordinator_response"].get("intention") == "conversacion":
-            state["messages"] = [state["coordinator_response"]]
+        coordinator_response = state["coordinator_response"]
+        intended_agent = coordinator_response.get("agent")
+        intention = coordinator_response.get("intention")
+        
+        # Si es una conversación, terminar directamente con la respuesta del coordinador
+        if intention == "conversacion" or intended_agent == "coordinator":
+            state["messages"] = [coordinator_response]
             return "__end__"
 
+        # Si es un comando específico, dirigir al agente correspondiente
         if intended_agent == "analyzer":
             if not state["context"].get("universal_analysis"):
                 return "universal_analyzer"
@@ -151,10 +156,52 @@ class MedicalAgentsOrchestrator:
         
         if intended_agent == "generator":
             return "generator"
-
+        
+        # Para cualquier otro agente o caso, terminar con la respuesta del coordinador
+        state["messages"] = [coordinator_response]
         return "__end__"
 
     async def process_user_input(self, user_input: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
-        initial_state = {"user_input": user_input, "context": context or {}, "messages": []}
-        final_state = await self.workflow.ainvoke(initial_state)
-        return final_state["messages"][-1] if final_state.get("messages") else {"message": "Error: No se generó respuesta."}
+        initial_state = {
+            "user_input": user_input, 
+            "context": context or {}, 
+            "messages": [],
+            "coordinator_response": {},
+            "universal_analysis": {},
+            "next_agent": "",
+            "error": ""
+        }
+        
+        try:
+            final_state = await self.workflow.ainvoke(initial_state)
+            
+            # Si hay mensajes, devolver el último
+            if final_state.get("messages"):
+                return final_state["messages"][-1]
+            
+            # Si hay una respuesta del coordinador pero no mensajes, usar esa respuesta
+            if final_state.get("coordinator_response"):
+                return final_state["coordinator_response"]
+            
+            # Si hay un error específico, devolverlo
+            if final_state.get("error"):
+                return {
+                    "message": f"❌ Error: {final_state['error']}", 
+                    "agent": "system",
+                    "error": True
+                }
+            
+            # Fallback: respuesta por defecto
+            return {
+                "message": "Lo siento, no pude procesar tu solicitud. ¿Podrías intentar reformularla?",
+                "agent": "coordinator",
+                "error": False
+            }
+        
+        except Exception as e:
+            logger.error(f"Error en process_user_input: {e}")
+            return {
+                "message": f"❌ Error interno: {str(e)}",
+                "agent": "system", 
+                "error": True
+            }

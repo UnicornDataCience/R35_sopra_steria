@@ -19,17 +19,21 @@ AGENTES DISPONIBLES:
 - simulator: Para simular la evolución de pacientes. Se activa con simular, evolucionar.
 - evaluator: Para medir la calidad de los datos. Se activa con evaluar, calidad, métricas.
 
+DETECCIÓN DE INTENCIONES:
+- Si el input contiene saludos (hola, buenos días, hi), preguntas generales, agradecimientos o conversación: intention=conversacion
+- Si el input contiene comandos de acción específicos: intention=comando
+
 FORMATO DE RESPUESTA:
 Tu salida DEBE ser SIEMPRE un JSON válido con esta estructura:
 - intention: conversacion o comando
 - agent: analyzer, generator, validator, simulator, evaluator o coordinator
-- parameters: objeto con parámetros específicos
+- parameters: objeto con parámetros específicos (MANTÉN los parámetros recibidos)
 - message: mensaje para el usuario
 
 Ejemplos:
-Para saludo: intention=conversacion, agent=coordinator, message=respuesta amigable
-Para análisis: intention=comando, agent=analyzer, message=confirmación
-Para generación: intention=comando, agent=generator, parameters con num_samples y model_type
+Para "hola": {{"intention": "conversacion", "agent": "coordinator", "message": "¡Hola! Soy tu asistente de IA médica. ¿En qué puedo ayudarte?"}}
+Para "analizar datos": {{"intention": "comando", "agent": "analyzer", "message": "Iniciando análisis del dataset..."}}
+Para "generar con CTGAN": {{"intention": "comando", "agent": "generator", "parameters": {{"model_type": "ctgan"}}, "message": "Generando datos sintéticos con CTGAN..."}}
 """
 
 class CoordinatorAgentConfig(BaseAgentConfig):
@@ -67,7 +71,20 @@ class CoordinatorAgent(BaseLLMAgent):
         prompt = f"{input_text}"
         if context and context.get("dataset_uploaded"):
             prompt += f"\n\nContexto Adicional: Ya hay un dataset cargado llamado '{context.get('filename')}'."
+        
+        # Agregar información de parámetros si están presentes
+        if context and context.get("parameters"):
+            params = context["parameters"]
+            if params.get("model_type"):
+                prompt += f"\n\nModelo solicitado: {params['model_type'].upper()}"
+            if params.get("num_samples"):
+                prompt += f"\nNúmero de muestras: {params['num_samples']}"
 
         llm_response = await self.agent_executor.ainvoke({"input": prompt, "chat_history": self.memory.chat_memory.messages})
         parsed_response = self._parse_llm_response(llm_response.content)
+        
+        # Asegurar que los parámetros se mantengan en la respuesta
+        if context and context.get("parameters"):
+            parsed_response["parameters"] = context["parameters"]
+        
         return parsed_response
