@@ -40,7 +40,7 @@ class MedicalAgentsOrchestrator:
         workflow.add_node("universal_analyzer", self._universal_analyzer_node)
         workflow.add_node("analyzer", self._analyzer_node)
         workflow.add_node("generator", self._generator_node)
-        workflow.add_node("validator", self._validator_node)
+        # ... (otros nodos se pueden añadir aquí)
         
         workflow.add_edge(START, "coordinator")
         workflow.add_conditional_edges(
@@ -50,14 +50,12 @@ class MedicalAgentsOrchestrator:
                 "universal_analyzer": "universal_analyzer",
                 "analyzer": "analyzer",
                 "generator": "generator",
-                "validator": "validator",
                 "__end__": END
             }
         )
         workflow.add_edge("universal_analyzer", "analyzer")
         workflow.add_edge("analyzer", END)
         workflow.add_edge("generator", END)
-        workflow.add_edge("validator", END)
         return workflow.compile()
 
     async def _coordinator_node(self, state: AgentState) -> AgentState:
@@ -140,90 +138,28 @@ class MedicalAgentsOrchestrator:
         state["messages"] = state.get("messages", []) + [response]
         return state
 
-    async def _validator_node(self, state: AgentState) -> AgentState:
-        """Nodo del validador médico que prioriza datos sintéticos sobre originales"""
-        try:
-            print("🔍 Iniciando _validator_node")
-            context = state["context"]
-            print(f"🔍 Context keys: {list(context.keys())}")
-            
-            # Priorizar datos sintéticos si están disponibles
-            synthetic_data = context.get("synthetic_data")
-            original_data = context.get("dataframe")
-            if original_data is None:
-                original_data = context.get("original_dataframe")
-            
-            print(f"🔍 synthetic_data type: {type(synthetic_data)}")
-            print(f"🔍 original_data type: {type(original_data)}")
-            
-            if synthetic_data is not None and not synthetic_data.empty:
-                # Usar datos sintéticos
-                validation_context = {
-                    **context,
-                    "synthetic_data": synthetic_data,
-                    "dataframe": original_data,  # Para comparación/referencia
-                    "validation_target": "synthetic"
-                }
-                print("✅ Validando datos sintéticos")
-            elif original_data is not None and not original_data.empty:
-                # Usar datos originales como fallback
-                validation_context = {
-                    **context,
-                    "synthetic_data": original_data,  # Usar como datos a validar
-                    "dataframe": original_data,
-                    "validation_target": "original"
-                }
-                print("✅ Validando datos originales (no hay datos sintéticos disponibles)")
-            else:
-                # Error: no hay datos para validar
-                state["error"] = "No hay datos disponibles para validación."
-                return state
-            
-            print("🔍 Llamando al agente validator...")
-            # Procesar validación
-            response = await self.agents["validator"].process(state["user_input"], validation_context)
-            state["messages"] = state.get("messages", []) + [response]
-            print("✅ Validación completada")
-            return state
-        except Exception as e:
-            print(f"❌ Error en _validator_node: {e}")
-            import traceback
-            traceback.print_exc()
-            state["error"] = f"Error en validación: {str(e)}"
-            return state
-
     def _route_from_coordinator(self, state: AgentState) -> str:
-        try:
-            coordinator_response = state["coordinator_response"]
-            intended_agent = coordinator_response.get("agent")
-            intention = coordinator_response.get("intention")
-            
-            print(f"🔀 Routing: intention={intention}, agent={intended_agent}")
-            
-            # Si es una conversación, terminar directamente con la respuesta del coordinador
-            if intention == "conversacion" or intended_agent == "coordinator":
-                state["messages"] = [coordinator_response]
-                return "__end__"
-
-            # Si es un comando específico, dirigir al agente correspondiente
-            if intended_agent == "analyzer":
-                if not state["context"].get("universal_analysis"):
-                    return "universal_analyzer"
-                return "analyzer"
-            
-            if intended_agent == "generator":
-                return "generator"
-                
-            if intended_agent == "validator":
-                return "validator"
-            
-            # Para cualquier otro agente o caso, terminar con la respuesta del coordinador
+        coordinator_response = state["coordinator_response"]
+        intended_agent = coordinator_response.get("agent")
+        intention = coordinator_response.get("intention")
+        
+        # Si es una conversación, terminar directamente con la respuesta del coordinador
+        if intention == "conversacion" or intended_agent == "coordinator":
             state["messages"] = [coordinator_response]
             return "__end__"
-        except Exception as e:
-            print(f"❌ Error en routing: {e}")
-            state["error"] = f"Error en routing: {str(e)}"
-            return "__end__"
+
+        # Si es un comando específico, dirigir al agente correspondiente
+        if intended_agent == "analyzer":
+            if not state["context"].get("universal_analysis"):
+                return "universal_analyzer"
+            return "analyzer"
+        
+        if intended_agent == "generator":
+            return "generator"
+        
+        # Para cualquier otro agente o caso, terminar con la respuesta del coordinador
+        state["messages"] = [coordinator_response]
+        return "__end__"
 
     async def process_user_input(self, user_input: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
         initial_state = {
