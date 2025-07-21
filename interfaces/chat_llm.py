@@ -343,10 +343,20 @@ def create_mock_orchestrator():
         "coordinator": MockAgent("Coordinador"),
         "analyzer": MockAgent("Analista Clínico"),
         "generator": MockAgent("Generador Sintético"),
-        "validator": MockAgent("Validador Médico"),
         "simulator": MockAgent("Simulador de Pacientes"),
         "evaluator": MockAgent("Evaluador de Utilidad")
     }
+    
+    # Agregar validador real si está disponible
+    if VALIDATOR_AVAILABLE:
+        try:
+            mock_agents["validator"] = MedicalValidatorAgent()
+            print("✅ Validator real agregado al orquestador mock")
+        except Exception as e:
+            mock_agents["validator"] = MockAgent("Validador Médico")
+            print(f"⚠️ Error agregando validator real al mock, usando mock: {e}")
+    else:
+        mock_agents["validator"] = MockAgent("Validador Médico")
     
     class MockLangGraphOrchestrator:
         def __init__(self, agents):
@@ -400,7 +410,16 @@ def create_mock_orchestrator():
                 return response
             elif any(word in user_input.lower() for word in ["validar", "valida", "validación"]):
                 self.state["current_agent"] = "validator"
-                return {"message": "✅ Validación completada (modo simulado)\n\nDatos validados exitosamente.", "agent": "validator"}
+                # Usar el validador real si está disponible, incluso en modo mock
+                if VALIDATOR_AVAILABLE:
+                    try:
+                        agent = self.agents["validator"]
+                        response = await agent.process(user_input, context)
+                        return response
+                    except Exception as e:
+                        return {"message": f"❌ Error en validación: {str(e)}", "agent": "validator", "error": True}
+                else:
+                    return {"message": "✅ Validación completada (modo simulado)\n\nDatos validados exitosamente.", "agent": "validator"}
             elif any(word in user_input.lower() for word in ["evaluar", "evalúa", "calidad"]):
                 self.state["current_agent"] = "evaluator"
                 return {"message": "📊 Evaluación completada (modo simulado)\n\nCalidad de datos: Excelente", "agent": "evaluator"}
@@ -976,9 +995,6 @@ with st.sidebar:
                     del st.session_state.context['generation_info']
                 st.success("✅ Datos sintéticos eliminados")
                 st.rerun()
-
-
-        
 
         
     # Agregar nota de seguridad y privacidad
