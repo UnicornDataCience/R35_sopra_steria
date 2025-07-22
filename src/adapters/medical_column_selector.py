@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from enum import Enum
 import logging
 
-from ..adapters.universal_dataset_detector import (
+from .universal_dataset_detector import (
     UniversalDatasetDetector, DatasetType, ColumnType, ColumnMapping
 )
 

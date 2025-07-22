@@ -96,12 +96,11 @@ Por favor, genera un informe en Markdown sobre la calidad y coherencia médica d
         
         # 1. Calidad de Datos (Esquema) - APLICAR DIFERENTE VALIDACIÓN SEGÚN EL TIPO
         if validation_mode == "sintéticos":
-            # Para datos sintéticos: validación JSON estricta
-            schema_errors = sum(1 for _, row in data.iterrows() if not self._validate_row_schema(row))
-            total_records = len(data)
-            results['data_quality'] = max(0.0, (total_records - schema_errors) / total_records) if total_records > 0 else 0.0
-            if schema_errors > 0:
-                results['issues'].append(f"{schema_errors} registros ({(schema_errors/total_records):.1%}) no cumplen con el esquema JSON esperado.")
+            # Para datos sintéticos (que son tabulares): usar la misma validación estructural que para los originales.
+            structural_score = self._validate_tabular_structure(data)
+            results['data_quality'] = structural_score
+            if structural_score < 0.8:
+                results['issues'].append("La estructura tabular de los datos sintéticos presenta algunas inconsistencias.")
         else:
             # Para datos originales: validación tabular más flexible
             structural_score = self._validate_tabular_structure(data)

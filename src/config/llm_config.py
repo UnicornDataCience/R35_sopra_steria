@@ -168,8 +168,8 @@ class GrokProvider(BaseLLMProvider):
                 max_tokens=max_tokens
             )
         except ImportError:
-            # Fallback usando requests directo
-            return GrokDirectLLM(
+            # Fallback usando requests directo  
+            return GroqDirectLLM(
                 api_key=self.api_key,
                 base_url=self.base_url,
                 model=self.model,
@@ -196,7 +196,7 @@ class GroqProvider(BaseLLMProvider):
         try:
             self.api_key = os.getenv("GROQ_API_KEY")
             self.base_url = "https://api.groq.com/openai/v1"
-            self.model = os.getenv("GROQ_MODEL", "llama-3.1-70b-versatile")
+            self.model = os.getenv("GROQ_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
             
             if self.api_key:
                 self.available = True
