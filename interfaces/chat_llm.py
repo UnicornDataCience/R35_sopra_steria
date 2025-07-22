@@ -432,20 +432,10 @@ def create_mock_orchestrator():
         "coordinator": MockAgent("Coordinador"),
         "analyzer": MockAgent("Analista Clínico"),
         "generator": MockAgent("Generador Sintético"),
+        "validator": MockAgent("Validador Médico"),
         "simulator": MockAgent("Simulador de Pacientes"),
         "evaluator": MockAgent("Evaluador de Utilidad")
     }
-    
-    # Agregar validador real si está disponible
-    if VALIDATOR_AVAILABLE:
-        try:
-            mock_agents["validator"] = MedicalValidatorAgent()
-            print("✅ Validator real agregado al orquestador mock")
-        except Exception as e:
-            mock_agents["validator"] = MockAgent("Validador Médico")
-            print(f"⚠️ Error agregando validator real al mock, usando mock: {e}")
-    else:
-        mock_agents["validator"] = MockAgent("Validador Médico")
     
     class MockLangGraphOrchestrator:
         def __init__(self, agents):
@@ -1106,6 +1096,9 @@ with st.sidebar:
                     del st.session_state.context['generation_info']
                 st.success("✅ Datos sintéticos eliminados")
                 st.rerun()
+
+
+        
 
         
     # Agregar nota de seguridad y privacidad

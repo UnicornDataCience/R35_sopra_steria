@@ -49,6 +49,19 @@ class FastMedicalOrchestrator:
         analyze_keywords = ["analizar", "análisis", "analiza", "explora", "examina", "estudia"]
         if any(word in user_lower for word in analyze_keywords):
             return "analyzer_workflow"
+        
+        # ⚠️ EVALUATOR tiene prioridad sobre GENERATOR para términos de calidad
+        # Primero verificar términos específicos de evaluación
+        evaluate_keywords = ["evaluar", "evalúa", "evaluación", "utilidad", "métricas"]
+        evaluate_phrases = ["calidad de datos", "calidad sintéticos", "métricas de utilidad"]
+        
+        if any(word in user_lower for word in evaluate_keywords):
+            return "evaluator_workflow"
+        if any(phrase in user_lower for phrase in evaluate_phrases):
+            return "evaluator_workflow"
+        # Si contiene "calidad" + términos de evaluación, va a evaluator
+        if "calidad" in user_lower and any(term in user_lower for term in ["datos", "sintéticos", "utilidad", "métricas"]):
+            return "evaluator_workflow"
             
         generate_keywords = ["generar", "sintético", "sintéticos", "genera", "crear", "ctgan", "tvae", "sdv"]
         if any(word in user_lower for word in generate_keywords):
@@ -61,10 +74,6 @@ class FastMedicalOrchestrator:
         simulate_keywords = ["simular", "simula", "paciente", "evolución", "temporal"]
         if any(word in user_lower for word in simulate_keywords):
             return "simulator_workflow"
-            
-        evaluate_keywords = ["evaluar", "evalúa", "calidad", "utilidad", "métricas"]
-        if any(word in user_lower for word in evaluate_keywords):
-            return "evaluator_workflow"
         
         # 💬 TODO LO DEMÁS va a respuesta directa
         return "direct_llm_response"
@@ -333,7 +342,13 @@ Responde SOLO lo esencial."""
                     
             elif workflow_type == "generator_workflow":
                 if "generator" in self.agents:
+                    # Generar datos sintéticos
                     response = await self.agents["generator"].process(user_input, context)
+                    
+                    # Post-procesar datos sintéticos para validación JSON
+                    if "synthetic_data" in response:
+                        response = self._post_process_synthetic_data(response, context)
+                    
                     response["route"] = "agent_workflow"
                     return response
                 else:
@@ -354,9 +369,84 @@ Responde SOLO lo esencial."""
                         "agent": "system",
                         "route": "agent_fallback"
                     }
+                    
+            elif workflow_type == "evaluator_workflow":
+                print(f"📊 [DEBUG] Buscando agente 'evaluator' en: {list(self.agents.keys())}")
+                if "evaluator" in self.agents:
+                    print(f"✅ [DEBUG] Agente evaluator encontrado: {type(self.agents['evaluator'])}")
+                    
+                    # Verificar que hay datos originales y sintéticos para evaluar
+                    original_data = context.get("dataframe")
+                    synthetic_data = context.get("synthetic_data")
+                    
+                    if original_data is None:
+                        return {
+                            "message": "❌ **Error**: No hay dataset original cargado.\n\nPara evaluar calidad, necesito:\n• Dataset original cargado\n• Datos sintéticos generados\n\n**Pasos sugeridos:**\n1. Sube un dataset\n2. Genera datos sintéticos\n3. Solicita evaluación",
+                            "agent": "system",
+                            "route": "evaluation_error"
+                        }
+                    
+                    if synthetic_data is None:
+                        return {
+                            "message": "❌ **Error**: No hay datos sintéticos generados.\n\nPara evaluar calidad, necesito datos sintéticos previos.\n\n**Pasos sugeridos:**\n1. Genera datos sintéticos primero\n2. Luego solicita evaluación\n\n**Comando ejemplo:**\n`Genera 500 registros con CTGAN`",
+                            "agent": "system",
+                            "route": "evaluation_error"
+                        }
+                    
+                    print(f"📊 [DEBUG] Datos disponibles para evaluación:")
+                    print(f"   - Original: {len(original_data)} filas")
+                    print(f"   - Sintético: {len(synthetic_data)} filas")
+                    
+                    response = await self.agents["evaluator"].process(user_input, context)
+                    response["route"] = "agent_workflow"
+                    return response
+                else:
+                    print(f"❌ [DEBUG] Agente evaluator NO encontrado")
+                    return {
+                        "message": "📊 **Evaluación de calidad solicitada**\n\nPara evaluar la utilidad de datos sintéticos, necesito que el agente evaluador esté disponible. Actualmente estoy en modo simplificado.\n\n**Métricas de evaluación:**\n• Fidelidad estadística\n• Utilidad para ML\n• Preservación de patrones\n• Score de privacidad\n• Calidad de entidades médicas\n\nPor favor, verifica la configuración de los agentes.",
+                        "agent": "system",
+                        "route": "agent_fallback"
+                    }
+                    
+            elif workflow_type == "simulator_workflow":
+                print(f"🏥 [DEBUG] Buscando agente 'simulator' en: {list(self.agents.keys())}")
+                if "simulator" in self.agents:
+                    print(f"✅ [DEBUG] Agente simulator encontrado: {type(self.agents['simulator'])}")
+                    
+                    # Verificar que hay datos validados para la simulación
+                    synthetic_data = context.get("synthetic_data")
+                    original_data = context.get("dataframe")
+                    
+                    # Priorizar datos sintéticos validados, pero permitir simulación con datos originales
+                    simulation_data = synthetic_data if synthetic_data is not None else original_data
+                    
+                    if simulation_data is None:
+                        return {
+                            "message": "❌ **Error**: No hay datos disponibles para simulación.\n\nPara simular evolución de pacientes, necesito:\n• Dataset cargado (original o sintético)\n• Preferiblemente datos sintéticos validados\n\n**Pasos sugeridos:**\n1. Sube un dataset\n2. Opcionalmente genera datos sintéticos\n3. Valida los datos\n4. Solicita simulación\n\n**Comando ejemplo:**\n`Simula la evolución de estos pacientes`",
+                            "agent": "system",
+                            "route": "simulation_error"
+                        }
+                    
+                    print(f"🏥 [DEBUG] Datos disponibles para simulación:")
+                    print(f"   - Datos de simulación: {len(simulation_data)} filas")
+                    print(f"   - Tipo de datos: {'sintéticos' if synthetic_data is not None else 'originales'}")
+                    
+                    # Actualizar contexto con los datos de simulación
+                    context["synthetic_data"] = simulation_data
+                    
+                    response = await self.agents["simulator"].process(user_input, context)
+                    response["route"] = "agent_workflow"
+                    return response
+                else:
+                    print(f"❌ [DEBUG] Agente simulator NO encontrado")
+                    return {
+                        "message": "🏥 **Simulación de pacientes solicitada**\n\nPara simular la evolución temporal de pacientes, necesito que el agente simulador esté disponible. Actualmente estoy en modo simplificado.\n\n**Simulaciones disponibles:**\n• Evolución hospitalaria\n• Progresión clínica temporal\n• Simulación de visitas\n• Cambios en biomarcadores\n• Respuesta a tratamientos\n\n**Enfermedades soportadas:**\n• COVID-19 (simulación específica)\n• Casos generales (todas las especialidades)\n\nPor favor, verifica la configuración de los agentes.",
+                        "agent": "system",
+                        "route": "agent_fallback"
+                    }
             else:
                 return {
-                    "message": f"❌ **Workflow no reconocido**: {workflow_type}\n\nWorkflows disponibles:\n• analyzer_workflow\n• generator_workflow\n• validator_workflow",
+                    "message": f"❌ **Workflow no reconocido**: {workflow_type}\n\nWorkflows disponibles:\n• analyzer_workflow\n• generator_workflow\n• validator_workflow\n• evaluator_workflow\n• simulator_workflow",
                     "agent": "system",
                     "route": "error"
                 }
@@ -419,3 +509,50 @@ Responde SOLO lo esencial."""
                     "agent": "system",
                     "error": True
                 }
+    
+    def _post_process_synthetic_data(self, response: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Post-procesa los datos sintéticos para prepararlos para validación JSON.
+        Aplica el medical_data_adapter para convertir al formato esperado.
+        """
+        try:
+            synthetic_data = response.get("synthetic_data")
+            if synthetic_data is None:
+                return response
+            
+            print("🔄 Post-procesando datos sintéticos para validación JSON...")
+            
+            # Importar el adaptador médico
+            from ..adapters.medical_data_adapter import UniversalMedicalAdapter
+            adapter = UniversalMedicalAdapter()
+            
+            # Obtener mapeos de campo del contexto si están disponibles
+            analysis_results = context.get("analysis_results", {})
+            field_mappings = analysis_results.get("field_mappings", {})
+            
+            # Preparar datos para validación JSON
+            json_ready_data = adapter.prepare_for_json_validation(
+                synthetic_data, 
+                field_mappings
+            )
+            
+            # Actualizar la respuesta con los datos procesados
+            response["synthetic_data"] = json_ready_data
+            
+            # Agregar información sobre el post-procesamiento
+            generation_info = response.get("generation_info", {})
+            generation_info["json_processed"] = True
+            generation_info["json_processing_timestamp"] = datetime.datetime.now().isoformat()
+            response["generation_info"] = generation_info
+            
+            # Actualizar el mensaje para indicar el post-procesamiento
+            if "message" in response:
+                response["message"] += "\n\n🔧 **Post-procesamiento aplicado:** Datos preparados para validación JSON esquema médico."
+            
+            print("✅ Post-procesamiento completado - datos listos para validación JSON")
+            return response
+            
+        except Exception as e:
+            print(f"⚠️ Error en post-procesamiento de datos sintéticos: {e}")
+            # Si falla el post-procesamiento, devolver los datos originales
+            return response

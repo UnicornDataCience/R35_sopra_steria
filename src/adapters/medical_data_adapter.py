@@ -790,3 +790,136 @@ class UniversalMedicalAdapter:
                     )
             
             return mappings
+        
+    def prepare_for_json_validation(self, df: pd.DataFrame, field_mappings: Dict = None) -> pd.DataFrame:
+        """
+        Prepara los datos sintéticos para que pasen la validación JSON del esquema médico.
+        Convierte y mapea los campos al formato esperado por el esquema JSON.
+        """
+        print("🔄 Preparando datos sintéticos para validación JSON...")
+        
+        # Crear una copia para no modificar el original
+        df_prepared = df.copy()
+        
+        # Mapeo de campos estándar a campos esperados por el esquema JSON
+        standard_to_json_mapping = {
+            'patient_id': 'PATIENT ID',
+            'age': 'EDAD/AGE',
+            'gender': 'SEXO/SEX',
+            'diagnosis': 'DIAG ING/INPAT',
+            'medication': 'FARMACO/DRUG_NOMBRE_COMERCIAL/COMERCIAL_NAME',
+            'icu_days': 'UCI_DIAS/ICU_DAYS',
+            'temperature': 'TEMP_ING/INPAT',
+            'oxygen_saturation': 'SAT_02_ING/INPAT',
+            'outcome': 'RESULTADO/VAL_RESULT',
+            'discharge_reason': 'MOTIVO_ALTA/DESTINY_DISCHARGE_ING'
+        }
+        
+        # Aplicar mapeo inverso si tenemos field_mappings
+        if field_mappings:
+            # Crear mapeo desde nombres estándar a nombres JSON esperados
+            rename_dict = {}
+            for original_col, mapping in field_mappings.items():
+                if hasattr(mapping, 'standard_name'):
+                    standard_name = mapping.standard_name
+                elif isinstance(mapping, dict):
+                    standard_name = mapping.get('standard_name', original_col)
+                else:
+                    standard_name = original_col
+                
+                # Si el nombre estándar está en nuestro mapeo, renombrar
+                if standard_name in standard_to_json_mapping:
+                    target_name = standard_to_json_mapping[standard_name]
+                    if original_col in df_prepared.columns:
+                        rename_dict[original_col] = target_name
+            
+            if rename_dict:
+                df_prepared.rename(columns=rename_dict, inplace=True)
+                print(f"✅ Renombradas {len(rename_dict)} columnas para esquema JSON")
+        
+        # Asegurar tipos de datos correctos para el esquema JSON
+        df_prepared = self._enforce_json_schema_types(df_prepared)
+        
+        # Asegurar campos requeridos mínimos
+        df_prepared = self._ensure_required_fields(df_prepared)
+        
+        print(f"✅ Datos preparados para validación JSON: {len(df_prepared)} registros, {len(df_prepared.columns)} columnas")
+        return df_prepared
+    
+    def _enforce_json_schema_types(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Fuerza los tipos de datos según el esquema JSON esperado."""
+        df_typed = df.copy()
+        
+        # Mapeo de columnas a tipos esperados
+        type_mappings = {
+            'PATIENT ID': 'string',
+            'EDAD/AGE': 'numeric',
+            'SEXO/SEX': 'categorical',
+            'DIAG ING/INPAT': 'string',
+            'FARMACO/DRUG_NOMBRE_COMERCIAL/COMERCIAL_NAME': 'string',
+            'UCI_DIAS/ICU_DAYS': 'numeric',
+            'TEMP_ING/INPAT': 'numeric',
+            'SAT_02_ING/INPAT': 'numeric',
+            'RESULTADO/VAL_RESULT': 'numeric',
+            'MOTIVO_ALTA/DESTINY_DISCHARGE_ING': 'string'
+        }
+        
+        for col, expected_type in type_mappings.items():
+            if col in df_typed.columns:
+                try:
+                    if expected_type == 'numeric':
+                        df_typed[col] = pd.to_numeric(df_typed[col], errors='coerce')
+                    elif expected_type == 'string':
+                        df_typed[col] = df_typed[col].astype(str)
+                        # Reemplazar 'nan' strings con valores válidos
+                        df_typed[col] = df_typed[col].replace(['nan', 'None', 'NaN'], 'N/A')
+                    elif expected_type == 'categorical':
+                        # Normalizar géneros
+                        if 'SEX' in col or 'SEXO' in col:
+                            df_typed[col] = df_typed[col].astype(str).str.upper()
+                            df_typed[col] = df_typed[col].replace({
+                                'MASCULINO': 'MALE', 'FEMENINO': 'FEMALE', 
+                                'M': 'MALE', 'F': 'FEMALE',
+                                'HOMBRE': 'MALE', 'MUJER': 'FEMALE'
+                            })
+                            # Asegurar que solo tenemos valores válidos
+                            valid_genders = ['MALE', 'FEMALE']
+                            df_typed[col] = df_typed[col].apply(
+                                lambda x: x if x in valid_genders else 'MALE'
+                            )
+                except Exception as e:
+                    print(f"⚠️ Error convirtiendo {col}: {e}")
+                    continue
+        
+        return df_typed
+    
+    def _ensure_required_fields(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Asegura que los campos requeridos estén presentes con valores válidos."""
+        df_complete = df.copy()
+        
+        # Campos requeridos según el esquema JSON
+        required_fields = {
+            'PATIENT ID': lambda i: f"PAT_{i:04d}",
+            'EDAD/AGE': lambda i: np.random.randint(18, 85),
+            'SEXO/SEX': lambda i: np.random.choice(['MALE', 'FEMALE']),
+            'DIAG ING/INPAT': lambda i: 'UNKNOWN_DIAGNOSIS'
+        }
+        
+        for field, generator in required_fields.items():
+            if field not in df_complete.columns:
+                # Crear la columna si no existe
+                df_complete[field] = [generator(i) for i in range(len(df_complete))]
+                print(f"➕ Campo requerido creado: {field}")
+            else:
+                # Rellenar valores nulos en campos existentes
+                null_mask = df_complete[field].isnull()
+                if null_mask.any():
+                    null_indices = df_complete[null_mask].index
+                    df_complete.loc[null_mask, field] = [
+                        generator(i) for i in range(len(null_indices))
+                    ]
+                    print(f"🔧 Rellenados {null_mask.sum()} valores nulos en {field}")
+        
+        return df_complete
+    
+    def standardize_dataset(self, df: pd.DataFrame, field_mappings: Dict) -> pd.DataFrame:

@@ -24,12 +24,15 @@ class PatientSimulatorAgent(BaseLLMAgent):
             return {"message": "Error: Se necesitan datos validados para la simulación.", "agent": self.name, "error": True}
 
         try:
+            # Determinar el tipo de enfermedad basado en el análisis universal
             is_covid = context.get('universal_analysis', {}).get('dataset_type') == 'COVID-19'
-            disease_type = "COVID-19" if is_covid else "general"
+            disease_type = "covid19" if is_covid else "general"  # Corregir nombre para el simulador
             
             # Inicializar el simulador con los datos
             simulation_engine = ProgressSimulator(validated_data, disease_type)
-            evolved_data, stats = simulation_engine.simulate_batch_evolution(validated_data, is_covid)
+            
+            # Llamar sin el parámetro is_covid que no existe en la función
+            evolved_data, stats = simulation_engine.simulate_batch_evolution(validated_data)
 
             prompt = self._create_llm_prompt(stats, len(validated_data))
             informe_markdown = await self.agent_executor.ainvoke({"input": prompt, "chat_history": self.memory.chat_memory.messages})

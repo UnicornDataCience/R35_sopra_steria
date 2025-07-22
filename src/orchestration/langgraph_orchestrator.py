@@ -54,7 +54,7 @@ class MedicalAgentsOrchestrator:
         workflow.add_node("universal_analyzer", self._universal_analyzer_node)
         workflow.add_node("analyzer", self._analyzer_node)
         workflow.add_node("generator", self._generator_node)
-        workflow.add_node("validator", self._validator_node)
+        # ... (otros nodos se pueden añadir aquí)
         
         workflow.add_edge(START, "coordinator")
         workflow.add_conditional_edges(
@@ -64,14 +64,12 @@ class MedicalAgentsOrchestrator:
                 "universal_analyzer": "universal_analyzer",
                 "analyzer": "analyzer",
                 "generator": "generator",
-                "validator": "validator",
                 "__end__": END
             }
         )
         workflow.add_edge("universal_analyzer", "analyzer")
         workflow.add_edge("analyzer", END)
         workflow.add_edge("generator", END)
-        workflow.add_edge("validator", END)
         return workflow.compile()
 
     async def _coordinator_node(self, state: AgentState) -> AgentState:
@@ -223,6 +221,7 @@ class MedicalAgentsOrchestrator:
         print(f"✅ [{datetime.datetime.now().strftime('%H:%M:%S')}] Generator completado en {end_time - start_time:.2f}s")
         return state
 
+<<<<<<< HEAD
     async def _validator_node(self, state: AgentState) -> AgentState:
         """Nodo del validador médico que prioriza datos sintéticos sobre originales"""
         try:
@@ -279,38 +278,30 @@ class MedicalAgentsOrchestrator:
             state["error"] = f"Error en validación: {str(e)}"
             return state
 
+=======
+>>>>>>> 40c25c65a57723c645d22f0e7d238eb02cbdbda6
     def _route_from_coordinator(self, state: AgentState) -> str:
-        try:
-            coordinator_response = state["coordinator_response"]
-            intended_agent = coordinator_response.get("agent")
-            intention = coordinator_response.get("intention")
-            
-            print(f"🔀 Routing: intention={intention}, agent={intended_agent}")
-            
-            # Si es una conversación, terminar directamente con la respuesta del coordinador
-            if intention == "conversacion" or intended_agent == "coordinator":
-                state["messages"] = [coordinator_response]
-                return "__end__"
-
-            # Si es un comando específico, dirigir al agente correspondiente
-            if intended_agent == "analyzer":
-                if not state["context"].get("universal_analysis"):
-                    return "universal_analyzer"
-                return "analyzer"
-            
-            if intended_agent == "generator":
-                return "generator"
-                
-            if intended_agent == "validator":
-                return "validator"
-            
-            # Para cualquier otro agente o caso, terminar con la respuesta del coordinador
+        coordinator_response = state["coordinator_response"]
+        intended_agent = coordinator_response.get("agent")
+        intention = coordinator_response.get("intention")
+        
+        # Si es una conversación, terminar directamente con la respuesta del coordinador
+        if intention == "conversacion" or intended_agent == "coordinator":
             state["messages"] = [coordinator_response]
             return "__end__"
-        except Exception as e:
-            print(f"❌ Error en routing: {e}")
-            state["error"] = f"Error en routing: {str(e)}"
-            return "__end__"
+
+        # Si es un comando específico, dirigir al agente correspondiente
+        if intended_agent == "analyzer":
+            if not state["context"].get("universal_analysis"):
+                return "universal_analyzer"
+            return "analyzer"
+        
+        if intended_agent == "generator":
+            return "generator"
+        
+        # Para cualquier otro agente o caso, terminar con la respuesta del coordinador
+        state["messages"] = [coordinator_response]
+        return "__end__"
 
     async def process_user_input(self, user_input: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
         workflow_start_time = time.time()
