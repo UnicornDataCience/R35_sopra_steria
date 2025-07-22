@@ -16,6 +16,20 @@ if project_root not in sys.path:
 # Cargar variables de entorno
 load_dotenv()
 
+# FORZAR GROQ - Sobrescribir variable del sistema si FORCE_GROQ=true
+if os.getenv('FORCE_GROQ', 'false').lower() == 'true':
+    os.environ['LLM_PROVIDER'] = 'groq'
+    print("🚀 [STREAMLIT] Variable LLM_PROVIDER forzada a 'groq'")
+
+# Importar el wrapper síncrono para evitar problemas de event loop
+try:
+    from src.utils.streamlit_async_wrapper import run_async_safe
+    ASYNC_WRAPPER_AVAILABLE = True
+    print("✅ Wrapper síncrono disponible")
+except ImportError as e:
+    ASYNC_WRAPPER_AVAILABLE = False
+    print(f"⚠️ Wrapper síncrono no disponible: {e}")
+
 # Importar el selector de columnas médicas
 try:
     from src.adapters.medical_column_selector import MedicalColumnSelector
@@ -121,24 +135,53 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Importar configuración de Azure
+# Importar configuración unificada de LLMs
 try:
-    from src.config.azure_config import azure_config
-    AZURE_CONFIGURED = True
-    try:
-        connection_test = azure_config.test_connection()
-        print("✅ Azure OpenAI conectado correctamente")
-    except Exception as e:
-        connection_test = False
-        print(f"⚠️ Azure configurado pero sin conexión: {e}")
+    from src.config.llm_config import unified_llm_config
+    LLM_CONFIGURED = True
+    connection_test = unified_llm_config.test_connection()
+    provider_info = unified_llm_config.status_info
+    active_provider = provider_info["active_provider"]
+    
+    if connection_test:
+        print(f"✅ LLM conectado correctamente - Proveedor: {active_provider}")
+    else:
+        print(f"⚠️ LLM configurado pero sin conexión - Proveedor: {active_provider}")
+        
 except Exception as e:
-    AZURE_CONFIGURED = False
+    LLM_CONFIGURED = False
     connection_test = False
-    print(f"⚠️ Error de configuración Azure: {e}")
+    active_provider = "none"
+    print(f"⚠️ Error de configuración LLM: {e}")
 
-# Importar LangGraph Orchestrator y agentes con manejo de errores
+# Mantener compatibilidad con código existente
+AZURE_CONFIGURED = LLM_CONFIGURED and active_provider == "azure"
+
+# Importar orquestador con fallback para problemas de MRO en LangGraph
 try:
     from src.orchestration.langgraph_orchestrator import MedicalAgentsOrchestrator, AgentState
+    LANGGRAPH_AVAILABLE = True
+    print("✅ LangGraph Orchestrator disponible")
+except Exception as e:
+    print(f"ℹ️ Usando Simple Orchestrator (LangGraph tiene problema de dependencias)")
+    try:
+        from src.orchestration.simple_orchestrator import MedicalAgentsOrchestrator
+        LANGGRAPH_AVAILABLE = False
+        print("✅ Usando Simple Orchestrator como fallback")
+    except Exception as e2:
+        print(f"❌ Error cargando orquestador alternativo: {e2}")
+        LANGGRAPH_AVAILABLE = False
+
+# Importar el nuevo FastOrchestrator como alternativa optimizada
+try:
+    from src.orchestration.fast_orchestrator import FastMedicalOrchestrator
+    FAST_ORCHESTRATOR_AVAILABLE = True
+    print("✅ Fast Orchestrator disponible")
+except Exception as e:
+    FAST_ORCHESTRATOR_AVAILABLE = False
+    print(f"⚠️ Fast Orchestrator no disponible: {e}")
+
+try:
     from src.agents.base_agent import BaseLLMAgent, BaseAgentConfig
     from src.agents.coordinator_agent import CoordinatorAgent
     from src.agents.analyzer_agent import ClinicalAnalyzerAgent
@@ -185,6 +228,9 @@ class MockAgent:
         self.config = type('Config', (), {'name': name})()
     
     async def process(self, input_text, context=None):
+        return self.process_sync(input_text, context)
+    
+    def process_sync(self, input_text, context=None):
         context = context or {}
         has_dataset = context.get("dataset_uploaded", False)
         
@@ -197,7 +243,7 @@ class MockAgent:
                 dataset_msg = f"\n\nDataset detectado: {filename} ({rows:,} filas, {cols} columnas)"
             
             return {
-                "message": f"👋 **¡Hola!** Soy tu asistente de IA para generar datos clínicos sintéticos.\n\n🔬 **Estado:** {'✅ Azure OpenAI Conectado' if connection_test else '🔄 Modo Simulado'}{dataset_msg}\n\n**🧠 Mi equipo especializado:**\n• **Analista** - Extrae patrones clínicos\n• **Generador** - Crea datos sintéticos con SDV\n• **Validador** - Verifica coherencia médica\n• **Simulador** - Modela evolución temporal\n• **Evaluador** - Mide calidad y utilidad\n\n¿En qué puedo ayudarte hoy?",
+                "message": f"👋 **¡Hola!** Soy tu asistente de IA para generar datos clínicos sintéticos.\n\n🔬 **Estado:** {'✅ ' + active_provider.title() + ' Conectado' if connection_test else '🔄 Modo Simulado'}{dataset_msg}\n\n**🧠 Mi equipo especializado:**\n• **Analista** - Extrae patrones clínicos\n• **Generador** - Crea datos sintéticos con SDV\n• **Validador** - Verifica coherencia médica\n• **Simulador** - Modela evolución temporal\n• **Evaluador** - Mide calidad y utilidad\n\n¿En qué puedo ayudarte hoy?",
                 "agent": self.name,
                 "mock": True
             }
@@ -304,9 +350,47 @@ class MockAgent:
             }
 
 @st.cache_resource
-def initialize_langgraph_orchestrator():
-    """Inicializa el orquestador LangGraph con agentes"""
-    if AGENTS_AVAILABLE and LANGGRAPH_AVAILABLE and AZURE_CONFIGURED:
+def initialize_orchestrator():
+    """
+    Inicializa el orquestador principal con prioridad para FastOrchestrator.
+    FastOrchestrator es optimizado para respuestas rápidas sin timeout.
+    """
+    # PRIORIDAD 1: FastOrchestrator (Optimizado para velocidad)
+    if FAST_ORCHESTRATOR_AVAILABLE and LLM_CONFIGURED:
+        try:
+            agents = {}
+            
+            # Cargar agentes disponibles para workflows específicos
+            if AGENTS_AVAILABLE:
+                try:
+                    agents["coordinator"] = CoordinatorAgent()
+                    agents["analyzer"] = ClinicalAnalyzerAgent()
+                    agents["generator"] = SyntheticGeneratorAgent()
+                    
+                    if VALIDATOR_AVAILABLE:
+                        agents["validator"] = MedicalValidatorAgent()
+                        print("✅ Validator agent agregado a FastOrchestrator")
+                    
+                    if SIMULATOR_AVAILABLE:
+                        agents["simulator"] = PatientSimulatorAgent()
+                        print("✅ Simulator agent agregado a FastOrchestrator")
+                    
+                    if EVALUATOR_AVAILABLE:
+                        agents["evaluator"] = UtilityEvaluatorAgent()
+                        print("✅ Evaluator agent agregado a FastOrchestrator")
+                        
+                except Exception as e:
+                    print(f"⚠️ Algunos agentes no disponibles para FastOrchestrator: {e}")
+            
+            fast_orchestrator = FastMedicalOrchestrator(agents)
+            print("🚀 FastMedicalOrchestrator inicializado (modo optimizado)")
+            return fast_orchestrator
+            
+        except Exception as e:
+            print(f"❌ Error inicializando FastOrchestrator: {e}")
+    
+    # PRIORIDAD 2: LangGraph Orchestrator (Original)
+    if AGENTS_AVAILABLE and LANGGRAPH_AVAILABLE and LLM_CONFIGURED:
         try:
             agents = {
                 "coordinator": CoordinatorAgent(),
@@ -331,11 +415,16 @@ def initialize_langgraph_orchestrator():
             print("✅ LangGraph Orchestrator inicializado con agentes reales")
             return orchestrator
         except Exception as e:
-            st.error(f"Error inicializando LangGraph Orchestrator: {e}")
             print(f"❌ Error en LangGraph: {e}")
     
+    # PRIORIDAD 3: Mock Orchestrator (Fallback)
     print("⚠️ Usando orquestador mock")
     return create_mock_orchestrator()
+
+@st.cache_resource 
+def initialize_langgraph_orchestrator():
+    """Función legacy para compatibilidad - ahora redirige a initialize_orchestrator"""
+    return initialize_orchestrator()
 
 def create_mock_orchestrator():
     """Crea un orquestador mock para desarrollo"""
@@ -373,13 +462,17 @@ def create_mock_orchestrator():
         
         async def process_user_input(self, user_input: str, context: dict = None):
             """Procesa input del usuario (versión mock)"""
+            return self.process_user_input_sync(user_input, context)
+        
+        def process_user_input_sync(self, user_input: str, context: dict = None):
+            """Versión síncrona del procesamiento de input del usuario"""
             self.state["context"] = context or {}
             
             # Detectar intención y ejecutar agente correspondiente
             if any(word in user_input.lower() for word in ["analizar", "análisis", "analiza"]):
                 self.state["current_agent"] = "analyzer"
                 agent = self.agents["analyzer"]
-                response = await agent.process(user_input, context)
+                response = agent.process_sync(user_input, context)
                 return response
             elif any(word in user_input.lower() for word in ["generar", "sintético", "sintéticos", "genera"]):
                 self.state["current_agent"] = "generator"
@@ -406,7 +499,7 @@ def create_mock_orchestrator():
                 }
                 
                 agent = self.agents["generator"]
-                response = await agent.process(user_input, context)
+                response = agent.process_sync(user_input, context)
                 return response
             elif any(word in user_input.lower() for word in ["validar", "valida", "validación"]):
                 self.state["current_agent"] = "validator"
@@ -414,7 +507,15 @@ def create_mock_orchestrator():
                 if VALIDATOR_AVAILABLE:
                     try:
                         agent = self.agents["validator"]
-                        response = await agent.process(user_input, context)
+                        # Para el agente validador real que puede ser async, usar el wrapper
+                        if hasattr(agent, 'process_sync'):
+                            response = agent.process_sync(user_input, context)
+                        else:
+                            # Si es async, usar run_async_safe si está disponible
+                            if ASYNC_WRAPPER_AVAILABLE:
+                                response = run_async_safe(agent.process, user_input, context)
+                            else:
+                                response = {"message": "❌ Error: Agente async sin wrapper disponible", "agent": "validator", "error": True}
                         return response
                     except Exception as e:
                         return {"message": f"❌ Error en validación: {str(e)}", "agent": "validator", "error": True}
@@ -433,7 +534,13 @@ def create_mock_orchestrator():
                 # Si Azure está configurado, usar el coordinador real
                 if AZURE_CONFIGURED and connection_test:
                     agent = self.agents["coordinator"]
-                    response = await agent.process(user_input, context)
+                    # Usar método síncrono o wrapper según sea necesario
+                    if hasattr(agent, 'process_sync'):
+                        response = agent.process_sync(user_input, context)
+                    elif ASYNC_WRAPPER_AVAILABLE:
+                        response = run_async_safe(agent.process, user_input, context)
+                    else:
+                        response = {"message": "❌ Error: Agente async sin wrapper disponible", "agent": "coordinator", "error": True}
                     return response
                 else:
                     # Respuesta mock inteligente para preguntas médicas
@@ -478,7 +585,7 @@ def create_mock_orchestrator():
                     dataset_msg = f"\n\n📊 **Dataset actual**: {filename} ({rows:,} filas, {cols} columnas)"
                 
                 return {
-                    "message": f"👋 **¡Hola!** Estoy muy bien, gracias por preguntar.\n\nSoy tu asistente de IA especializado en datos clínicos sintéticos.\n\n🔬 **Estado del sistema**: {'✅ Azure OpenAI Conectado' if connection_test else '🔄 Modo Simulado'}{dataset_msg}\n\n**¿En qué puedo ayudarte?**\n• Analizar datasets médicos\n• Generar datos sintéticos seguros\n• Responder preguntas sobre medicina\n• Validar coherencia clínica\n\n¡Pregúntame cualquier cosa sobre medicina o datos clínicos!",
+                    "message": f"👋 **¡Hola!** Estoy muy bien, gracias por preguntar.\n\nSoy tu asistente de IA especializado en datos clínicos sintéticos.\n\n🔬 **Estado del sistema**: {'✅ ' + active_provider.title() + ' Conectado' if connection_test else '🔄 Modo Simulado'}{dataset_msg}\n\n**¿En qué puedo ayudarte?**\n• Analizar datasets médicos\n• Generar datos sintéticos seguros\n• Responder preguntas sobre medicina\n• Validar coherencia clínica\n\n¡Pregúntame cualquier cosa sobre medicina o datos clínicos!",
                     "agent": "coordinator",
                     "topic": "greeting"
                 }
@@ -498,10 +605,7 @@ def create_mock_orchestrator():
     
     return MockLangGraphOrchestrator(mock_agents)
 
-@st.cache_resource
-def initialize_orchestrator():
-    """Inicializa el orquestador principal"""
-    return initialize_langgraph_orchestrator()
+# Función initialize_orchestrator movida arriba para evitar duplicación
 
 # Inicialización del estado
 if 'orchestrator' not in st.session_state:
@@ -630,11 +734,18 @@ else:
     """, unsafe_allow_html=True)
 
 # Status indicator actualizado
-if AZURE_CONFIGURED and connection_test:
-    status_text = "✅ Azure OpenAI Conectado"
+if LLM_CONFIGURED and connection_test:
+    if active_provider == "azure":
+        status_text = "✅ Azure OpenAI Conectado"
+    elif active_provider == "ollama":
+        status_text = "✅ Ollama Local Conectado"
+    elif active_provider == "grok":
+        status_text = "✅ Grok Conectado"
+    else:
+        status_text = "✅ LLM Conectado"
     status_color = "#10b981"
-elif AZURE_CONFIGURED:
-    status_text = "🟡 Azure Configurado (Sin conexión)"
+elif LLM_CONFIGURED:
+    status_text = f"🟡 {active_provider.title()} Configurado (Sin conexión)"
     status_color = "#f59e0b"
 else:
     status_text = "🔄 Modo Simulado"
@@ -1008,16 +1119,44 @@ with st.sidebar:
     st.subheader("🔧 Estado del Sistema")
     status_col1, status_col2, status_col3 = st.columns(3)
     with status_col1:
-        azure_status = "🟢 Conectado" if AZURE_CONFIGURED and connection_test else "🟡 Modo Simulado"
-        st.info(f"**Azure OpenAI:** {azure_status}")
+        if LLM_CONFIGURED and connection_test:
+            if active_provider == "azure":
+                llm_status = "🟢 Azure Conectado"
+            elif active_provider == "ollama":
+                llm_status = "🟢 Ollama Local"
+            elif active_provider == "grok":
+                llm_status = "🟢 Grok Conectado"
+            else:
+                llm_status = "🟢 LLM Conectado"
+        else:
+            llm_status = "🟡 Modo Simulado"
+        st.info(f"**Proveedor LLM:** {llm_status}")
     
     with status_col2:
-        agents_status = "🟢 Disponibles" if AGENTS_AVAILABLE else "🟡 Mock Agents"
-        st.info(f"**Agentes IA:** {agents_status}")
+        # Detectar tipo de orquestador
+        orchestrator_type = type(st.session_state.get('orchestrator', None)).__name__
+        if "FastMedical" in orchestrator_type:
+            orchestrator_status = "🚀 Fast Mode"
+            orchestrator_color = "green"
+        elif "MedicalAgents" in orchestrator_type:
+            orchestrator_status = "🔧 Full Mode" 
+            orchestrator_color = "blue"
+        else:
+            orchestrator_status = "🟡 Mock Mode"
+            orchestrator_color = "orange"
+        st.info(f"**Orquestador:** {orchestrator_status}")
         
     with status_col3:
-        langgraph_status = "🟢 Activo" if LANGGRAPH_AVAILABLE else "🟡 Fallback"
-        st.info(f"**LangGraph:** {langgraph_status}")
+        agents_status = "🟢 Disponibles" if AGENTS_AVAILABLE else "🟡 Mock Agents"
+        st.info(f"**Agentes IA:** {agents_status}")
+    
+    # Mostrar información adicional del orquestador en uso
+    if "FastMedical" in orchestrator_type:
+        st.success("⚡ **Modo Fast**: Respuestas optimizadas sin timeout. Agentes disponibles para tareas específicas.")
+    elif "MedicalAgents" in orchestrator_type:
+        st.info("🔧 **Modo Full**: Workflow completo con LangGraph. Todas las capacidades disponibles.")
+    else:
+        st.warning("🟡 **Modo Mock**: Respuestas simuladas para desarrollo. Configura LLM para funcionalidad completa.")
 
 with st.container():
     # Mostrar historial de chat
@@ -1099,8 +1238,8 @@ with st.container():
             """)
 
 # --- LÓGICA PRINCIPAL DEL CHAT ---
-async def main_chat_loop():
-    """Función asíncrona para manejar el bucle principal del chat."""
+def main_chat_loop():
+    """Función principal para manejar el bucle del chat usando wrapper síncrono."""
     limit_chat_history()
     
     # Procesar comandos rápidos del sidebar
@@ -1116,7 +1255,7 @@ async def main_chat_loop():
             if st.session_state.get('selected_columns'):
                 context_with_selections['selected_columns'] = st.session_state.selected_columns
             
-            response = await st.session_state.orchestrator.process_user_input(prompt, context_with_selections)
+            response = process_orchestrator_input_safe(st.session_state.orchestrator, prompt, context_with_selections)
             full_response = response.get("message", "No se recibió respuesta.")
             
             st.session_state.chat_history.append({
@@ -1252,7 +1391,8 @@ async def main_chat_loop():
         st.session_state.chat_history.append({"role": "user", "content": pending['prompt']})
         
         with st.spinner("🔄 Generando datos sintéticos..."):
-            response = await st.session_state.orchestrator.process_user_input(
+            response = process_orchestrator_input_safe(
+                st.session_state.orchestrator,
                 pending['prompt'], 
                 pending['context']
             )
@@ -1286,7 +1426,7 @@ async def main_chat_loop():
                 context_with_selections['selected_columns'] = st.session_state.selected_columns
                 progress_placeholder.info(f"✅ Usando {len(st.session_state.selected_columns)} columnas seleccionadas")
             
-            response = await st.session_state.orchestrator.process_user_input(prompt, context_with_selections)
+            response = process_orchestrator_input_safe(st.session_state.orchestrator, prompt, context_with_selections)
             progress_placeholder.empty()  # Limpiar el mensaje de progreso
             
             # Manejar respuesta de generación sintética
@@ -1311,9 +1451,94 @@ async def main_chat_loop():
         
         st.rerun()
 
-# --- EJECUCIÓN DEL BUCLE ASÍNCRONO ---
-if __name__ == "__main__":
+def process_orchestrator_input_safe(orchestrator, user_input: str, context: dict = None):
+    """
+    Ejecuta el orquestador de forma síncrona usando el wrapper para evitar problemas de event loop.
+    """
     try:
-        asyncio.run(main_chat_loop())
+        print(f"🔍 Debugging orchestrator type: {type(orchestrator)}")
+        print(f"🔍 Has process_user_input_sync: {hasattr(orchestrator, 'process_user_input_sync')}")
+        print(f"🔍 Has process_user_input: {hasattr(orchestrator, 'process_user_input')}")
+        print(f"🔍 ASYNC_WRAPPER_AVAILABLE: {ASYNC_WRAPPER_AVAILABLE}")
+        
+        # Verificar si el orquestador tiene el método síncrono
+        if hasattr(orchestrator, 'process_user_input_sync'):
+            print("✅ Usando process_user_input_sync")
+            return orchestrator.process_user_input_sync(user_input, context)
+        
+        # Si no tiene el método síncrono pero tenemos el wrapper disponible
+        elif ASYNC_WRAPPER_AVAILABLE and hasattr(orchestrator, 'process_user_input'):
+            print("✅ Usando wrapper con process_user_input")
+            # Pasar la función y los argumentos por separado al wrapper
+            return run_async_safe(orchestrator.process_user_input, user_input, context)
+        
+        # Fallback: intentar ejecutar directamente (para mocks)
+        else:
+            print("⚠️ Usando fallback directo")
+            # Para orquestadores mock que pueden ser síncronos o async
+            result = orchestrator.process_user_input(user_input, context)
+            print(f"🔍 Result type: {type(result)}")
+            
+            # Si es una corrutina, necesitamos ejecutarla de forma async
+            import inspect
+            if inspect.iscoroutine(result):
+                print("🔍 Result is coroutine, handling async")
+                if ASYNC_WRAPPER_AVAILABLE:
+                    # Cancelar la corrutina actual y crear una nueva llamada
+                    result.close()  # Liberar la corrutina no ejecutada
+                    return run_async_safe(orchestrator.process_user_input, user_input, context)
+                else:
+                    print("⚠️ No wrapper available, using basic asyncio")
+                    # Fallback simple: intentar con asyncio básico
+                    import asyncio
+                    import concurrent.futures
+                    
+                    def run_async():
+                        new_loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(new_loop)
+                        try:
+                            return new_loop.run_until_complete(orchestrator.process_user_input(user_input, context))
+                        finally:
+                            new_loop.close()
+                    
+                    try:
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            future = executor.submit(run_async)
+                            return future.result(timeout=30)
+                    except Exception as e:
+                        print(f"Error en fallback async: {e}")
+                        return {
+                            "message": f"❌ Error ejecutando operación async: {str(e)}",
+                            "agent": "system", 
+                            "error": True
+                        }
+            else:
+                print("✅ Result is sync, returning directly")
+                # Es síncrono, devolver directamente
+                return result
+            
     except Exception as e:
-        st.error(f"Ocurrió un error en la aplicación: {e}")
+        print(f"❌ Error en process_orchestrator_input_safe: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "message": f"❌ Error interno: {str(e)}",
+            "agent": "system", 
+            "error": True
+        }
+
+# Función initialize_orchestrator ya definida arriba
+
+# Inicialización del estado ya definida arriba
+
+# Ejecutar chat usando el wrapper síncrono
+if __name__ == "__main__":
+    # Como main_chat_loop ahora es síncrono, llamarlo directamente
+    try:
+        main_chat_loop()
+    except Exception as e:
+        st.error(f"❌ Error en el bucle principal del chat: {e}")
+        st.write("⚠️ Por favor, reinicia la aplicación")
+else:
+    # Si no estamos en main, ejecutar el bucle normalmente (para Streamlit)
+    main_chat_loop()

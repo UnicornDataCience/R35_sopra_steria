@@ -6,6 +6,8 @@ from typing import Dict, Any, List, TypedDict
 from langgraph.graph import StateGraph, START, END
 import pandas as pd
 import logging
+import time
+import datetime
 
 from ..agents.coordinator_agent import CoordinatorAgent
 from ..agents.analyzer_agent import ClinicalAnalyzerAgent
@@ -14,11 +16,16 @@ from ..agents.validator_agent import MedicalValidatorAgent
 from ..agents.simulator_agent import PatientSimulatorAgent
 from ..agents.evaluator_agent import UtilityEvaluatorAgent
 from ..adapters.universal_dataset_detector import UniversalDatasetDetector
+from ..utils.streamlit_async_wrapper import run_async_safe
 
 # Configurar logger
 logger = logging.getLogger(__name__)
 
-class AgentState(TypedDict):
+# Usar TypedDict para mejor compatibilidad con LangGraph
+from typing import TypedDict
+
+class AgentState(TypedDict, total=False):
+    """Estado del agente usando TypedDict para compatibilidad con LangGraph"""
     user_input: str
     context: Dict[str, Any]
     coordinator_response: Dict[str, Any]
@@ -29,10 +36,17 @@ class AgentState(TypedDict):
 
 class MedicalAgentsOrchestrator:
     def __init__(self, agents: Dict[str, Any]):
+        start_time = time.time()
+        print(f"🏗️ [{datetime.datetime.now().strftime('%H:%M:%S')}] Iniciando LangGraph Orchestrator...")
+        
         self.agents = agents
         self.universal_detector = UniversalDatasetDetector()
+        
+        print(f"🏗️ [{datetime.datetime.now().strftime('%H:%M:%S')}] Creando workflow...")
         self.workflow = self._create_workflow()
-        print("🏗️ LangGraph Orchestrator V2 inicializado con componentes universales")
+        
+        end_time = time.time()
+        print(f"✅ [{datetime.datetime.now().strftime('%H:%M:%S')}] LangGraph Orchestrator inicializado en {end_time - start_time:.2f}s")
 
     def _create_workflow(self) -> StateGraph:
         workflow = StateGraph(AgentState)
@@ -61,26 +75,87 @@ class MedicalAgentsOrchestrator:
         return workflow.compile()
 
     async def _coordinator_node(self, state: AgentState) -> AgentState:
-        response = await self.agents["coordinator"].process(state["user_input"], state["context"])
-        state["coordinator_response"] = response
-        return state
+        try:
+            start_time = time.time()
+            print(f"🔀 [{datetime.datetime.now().strftime('%H:%M:%S')}] Iniciando coordinator_node...")
+            
+            user_input = state.get("user_input", "")
+            context = state.get("context", {})
+            if not user_input:
+                state["error"] = "No se proporcionó entrada del usuario"
+                return state
+            
+            print(f"🔀 [{datetime.datetime.now().strftime('%H:%M:%S')}] Input: {user_input[:50]}...")
+            
+            # Crear un nuevo event loop si es necesario para evitar "Event loop is closed"
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_closed():
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            print(f"🔀 [{datetime.datetime.now().strftime('%H:%M:%S')}] Llamando al agente coordinador...")
+            response = await self.agents["coordinator"].process(user_input, context)
+            state["coordinator_response"] = response
+            
+            end_time = time.time()
+            print(f"✅ [{datetime.datetime.now().strftime('%H:%M:%S')}] Coordinator completado en {end_time - start_time:.2f}s")
+            return state
+        except Exception as e:
+            logger.error(f"Error en _coordinator_node: {e}")
+            state["error"] = f"Error en coordinador: {str(e)}"
+            return state
 
     async def _universal_analyzer_node(self, state: AgentState) -> AgentState:
-        df = state["context"].get("dataframe")
-        if df is None or not isinstance(df, pd.DataFrame):
-            state["error"] = "Dataset no encontrado para análisis."
+        try:
+            start_time = time.time()
+            print(f"🔍 [{datetime.datetime.now().strftime('%H:%M:%S')}] Iniciando universal_analyzer_node...")
+            
+            context = state.get("context", {})
+            df = context.get("dataframe")
+            if df is None or not isinstance(df, pd.DataFrame):
+                state["error"] = "Dataset no encontrado para análisis."
+                return state
+            
+            print(f"🔍 [{datetime.datetime.now().strftime('%H:%M:%S')}] Analizando dataset de {df.shape[0]}x{df.shape[1]}...")
+            analysis = self.universal_detector.analyze_dataset(df)
+            state["universal_analysis"] = analysis
+            state["context"]["universal_analysis"] = analysis # Asegurar que el contexto se actualiza
+            
+            end_time = time.time()
+            print(f"✅ [{datetime.datetime.now().strftime('%H:%M:%S')}] Universal analyzer completado en {end_time - start_time:.2f}s")
             return state
-        analysis = self.universal_detector.analyze_dataset(df)
-        state["universal_analysis"] = analysis
-        state["context"]["universal_analysis"] = analysis # Asegurar que el contexto se actualiza
-        return state
+        except Exception as e:
+            logger.error(f"Error en _universal_analyzer_node: {e}")
+            state["error"] = f"Error en analizador universal: {str(e)}"
+            return state
 
     async def _analyzer_node(self, state: AgentState) -> AgentState:
-        response = await self.agents["analyzer"].analyze_dataset(None, state["context"])
-        state["messages"] = state.get("messages", []) + [response]
-        return state
+        try:
+            start_time = time.time()
+            print(f"📊 [{datetime.datetime.now().strftime('%H:%M:%S')}] Iniciando analyzer_node...")
+            
+            context = state.get("context", {})
+            print(f"📊 [{datetime.datetime.now().strftime('%H:%M:%S')}] Llamando al agente analyzer...")
+            response = await self.agents["analyzer"].analyze_dataset(None, context)
+            state["messages"] = state.get("messages", []) + [response]
+            
+            end_time = time.time()
+            print(f"✅ [{datetime.datetime.now().strftime('%H:%M:%S')}] Analyzer completado en {end_time - start_time:.2f}s")
+            return state
+        except Exception as e:
+            logger.error(f"Error en _analyzer_node: {e}")
+            state["error"] = f"Error en analizador: {str(e)}"
+            return state
 
     async def _generator_node(self, state: AgentState) -> AgentState:
+        start_time = time.time()
+        print(f"🏭 [{datetime.datetime.now().strftime('%H:%M:%S')}] Iniciando generator_node...")
+        
         params = state["coordinator_response"].get("parameters", {})
         
         # Obtener DataFrame original
@@ -88,6 +163,8 @@ class MedicalAgentsOrchestrator:
         if df is None:
             state["error"] = "Dataset no encontrado para generación."
             return state
+        
+        print(f"🏭 [{datetime.datetime.now().strftime('%H:%M:%S')}] Dataset original: {df.shape[0]}x{df.shape[1]}")
         
         # Verificar si hay columnas seleccionadas por el usuario
         selected_columns = state["context"].get("selected_columns")
@@ -130,20 +207,28 @@ class MedicalAgentsOrchestrator:
                     df_for_generation = df.copy()
                     logger.info(f"Usando todas las {len(df.columns)} columnas del dataset")
         
+        print(f"🏭 [{datetime.datetime.now().strftime('%H:%M:%S')}] Dataset para generación: {df_for_generation.shape[0]}x{df_for_generation.shape[1]}")
+        
         # Actualizar el contexto con el DataFrame procesado
         updated_context = {**state["context"], **params}
         updated_context["dataframe"] = df_for_generation
         updated_context["original_dataframe"] = df  # Mantener referencia al original
         
+        print(f"🏭 [{datetime.datetime.now().strftime('%H:%M:%S')}] Llamando al agente generator...")
         # Llamar al agente generador
         response = await self.agents["generator"].process(state["user_input"], updated_context)
         state["messages"] = state.get("messages", []) + [response]
+        
+        end_time = time.time()
+        print(f"✅ [{datetime.datetime.now().strftime('%H:%M:%S')}] Generator completado en {end_time - start_time:.2f}s")
         return state
 
     async def _validator_node(self, state: AgentState) -> AgentState:
         """Nodo del validador médico que prioriza datos sintéticos sobre originales"""
         try:
-            print("🔍 Iniciando _validator_node")
+            start_time = time.time()
+            print(f"🔍 [{datetime.datetime.now().strftime('%H:%M:%S')}] Iniciando validator_node")
+            
             context = state["context"]
             print(f"🔍 Context keys: {list(context.keys())}")
             
@@ -179,11 +264,13 @@ class MedicalAgentsOrchestrator:
                 state["error"] = "No hay datos disponibles para validación."
                 return state
             
-            print("🔍 Llamando al agente validator...")
+            print(f"🔍 [{datetime.datetime.now().strftime('%H:%M:%S')}] Llamando al agente validator...")
             # Procesar validación
             response = await self.agents["validator"].process(state["user_input"], validation_context)
             state["messages"] = state.get("messages", []) + [response]
-            print("✅ Validación completada")
+            
+            end_time = time.time()
+            print(f"✅ [{datetime.datetime.now().strftime('%H:%M:%S')}] Validator completado en {end_time - start_time:.2f}s")
             return state
         except Exception as e:
             print(f"❌ Error en _validator_node: {e}")
@@ -226,7 +313,10 @@ class MedicalAgentsOrchestrator:
             return "__end__"
 
     async def process_user_input(self, user_input: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
-        initial_state = {
+        workflow_start_time = time.time()
+        print(f"🚀 [{datetime.datetime.now().strftime('%H:%M:%S')}] Iniciando process_user_input para: {user_input[:50]}...")
+        
+        initial_state: AgentState = {
             "user_input": user_input, 
             "context": context or {}, 
             "messages": [],
@@ -237,18 +327,25 @@ class MedicalAgentsOrchestrator:
         }
         
         try:
+            print(f"🚀 [{datetime.datetime.now().strftime('%H:%M:%S')}] Invocando workflow LangGraph...")
             final_state = await self.workflow.ainvoke(initial_state)
+            
+            workflow_end_time = time.time()
+            print(f"✅ [{datetime.datetime.now().strftime('%H:%M:%S')}] Workflow completado en {workflow_end_time - workflow_start_time:.2f}s")
             
             # Si hay mensajes, devolver el último
             if final_state.get("messages"):
+                print(f"📤 Devolviendo último mensaje de {len(final_state['messages'])} mensajes")
                 return final_state["messages"][-1]
             
             # Si hay una respuesta del coordinador pero no mensajes, usar esa respuesta
             if final_state.get("coordinator_response"):
+                print("📤 Devolviendo respuesta del coordinador")
                 return final_state["coordinator_response"]
             
             # Si hay un error específico, devolverlo
             if final_state.get("error"):
+                print(f"❌ Error en workflow: {final_state['error']}")
                 return {
                     "message": f"❌ Error: {final_state['error']}", 
                     "agent": "system",
@@ -256,6 +353,7 @@ class MedicalAgentsOrchestrator:
                 }
             
             # Fallback: respuesta por defecto
+            print("⚠️ No hay mensajes ni respuestas válidas")
             return {
                 "message": "Lo siento, no pude procesar tu solicitud. ¿Podrías intentar reformularla?",
                 "agent": "coordinator",
@@ -263,9 +361,15 @@ class MedicalAgentsOrchestrator:
             }
         
         except Exception as e:
+            workflow_end_time = time.time()
+            print(f"❌ [{datetime.datetime.now().strftime('%H:%M:%S')}] Error en workflow después de {workflow_end_time - workflow_start_time:.2f}s: {e}")
             logger.error(f"Error en process_user_input: {e}")
             return {
                 "message": f"❌ Error interno: {str(e)}",
                 "agent": "system", 
                 "error": True
             }
+
+    def process_user_input_sync(self, user_input: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Versión síncrona robusta usando wrapper para evitar problemas de event loop en Streamlit"""
+        return run_async_safe(self.process_user_input, user_input, context)

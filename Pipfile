@@ -21,8 +21,8 @@ streamlit = "*"
 pandas = "*"
 python-dotenv = "*"
 jsonschema = "*"
-langgraph = "*"
 pytest-asyncio = "*"
+langgraph = "*"
 
 [dev-packages]
 

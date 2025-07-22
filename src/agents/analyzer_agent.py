@@ -68,8 +68,16 @@ class ClinicalAnalyzerAgent(BaseLLMAgent):
         
         llm_response = await self.agent_executor.ainvoke(prompt_variables)
         
+        # Manejar diferentes tipos de respuesta del LLM
+        if hasattr(llm_response, 'content'):
+            response_text = llm_response.content
+        elif isinstance(llm_response, str):
+            response_text = llm_response
+        else:
+            response_text = str(llm_response)
+        
         return {
-            "message": llm_response.content,
+            "message": response_text,
             "agent": self.name,
             "analysis_complete": True
         }

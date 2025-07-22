@@ -81,7 +81,19 @@ class CoordinatorAgent(BaseLLMAgent):
                 prompt += f"\nNúmero de muestras: {params['num_samples']}"
 
         llm_response = await self.agent_executor.ainvoke({"input": prompt, "chat_history": self.memory.chat_memory.messages})
-        parsed_response = self._parse_llm_response(llm_response.content)
+        
+        # Manejar diferentes tipos de respuesta del LLM
+        if hasattr(llm_response, 'content'):
+            # Respuesta de AgentExecutor con herramientas
+            response_text = llm_response.content
+        elif isinstance(llm_response, str):
+            # Respuesta directa de LLM simple
+            response_text = llm_response
+        else:
+            # Otros tipos de respuesta
+            response_text = str(llm_response)
+        
+        parsed_response = self._parse_llm_response(response_text)
         
         # Asegurar que los parámetros se mantengan en la respuesta
         if context and context.get("parameters"):

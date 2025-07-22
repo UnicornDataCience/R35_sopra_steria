@@ -1,0 +1,14 @@
+# Dependencias adicionales para proveedores LLM alternativos
+# Ejecutar: pip install -r requirements_llm.txt
+
+# Para Ollama
+langchain-ollama>=0.1.0
+
+# Para Grok/OpenAI compatible
+openai>=1.0.0
+
+# Para requests directos
+requests>=2.31.0
+
+# Dependencias de compatibilidad
+httpx>=0.24.0
