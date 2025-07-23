@@ -1,0 +1,1019 @@
+================================================================================
+                           PATIENTIA - DOCUMENTACIÓN TÉCNICA
+              Generador de Historias Clínicas Sintéticas Mediante Agentes IA
+================================================================================
+
+📋 INFORMACIÓN GENERAL DEL PROYECTO
+================================================================================
+
+NOMBRE: Patientia R35 - Generador de Historias Clínicas Sintéticas
+TIPO: Trabajo Fin de Máster (TFM) en colaboración con Sopra Steria
+FECHA: 2024-2025
+ESTADO: Sistema completamente funcional (Julio 2025)
+
+
+DESCRIPCIÓN:
+Patientia es un sistema avanzado basado en agentes de IA que genera datos 
+sintéticos médicos de alta calidad manteniendo las características estadísticas 
+y clínicas de los datos reales sin comprometer la privacidad de los pacientes.
+
+El sistema utiliza un enfoque multi-agente con LangGraph para orquestar el 
+análisis, generación, validación, simulación y evaluación de datos clínicos 
+sintéticos.
+
+📊 ARQUITECTURA Y COMPONENTES PRINCIPALES
+================================================================================
+
+🔧 STACK TECNOLÓGICO:
+- Python 3.11+
+- LangGraph: Orquestación de agentes con estados
+- Streamlit: Interfaz web interactiva
+- Groq/Ollama/Azure OpenAI: Proveedores LLM
+- SDV/CTGAN/TVAE: Modelos generativos sintéticos
+- Pandas/NumPy: Procesamiento de datos médicos
+- MedLlama2: LLM especializado en medicina
+
+🏗️ ARQUITECTURA DE AGENTES:
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        PATIENTIA AGENT ARCHITECTURE                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────┐    ┌─────────────────────────────────────────────────┐ │
+│  │   STREAMLIT     │    │            LANGGRAPH ORCHESTRATOR              │ │
+│  │   INTERFACE     │────▶                                                 │ │
+│  │  (chat_llm.py)  │    │  ┌─────────────┐  ┌─────────────────────────┐  │ │
+│  └─────────────────┘    │  │ COORDINATOR │  │  UNIVERSAL DETECTOR     │  │ │
+│                         │  │   AGENT     │  │ (Dataset Analysis)      │  │ │
+│                         │  └─────┬───────┘  └─────────────────────────┘  │ │
+│                         │        │                                       │ │
+│  ┌─────────────────┐    │        ▼                                       │ │
+│  │   FAST          │    │  ┌─────────────────────────────────────────┐   │ │
+│  │ ORCHESTRATOR    │◄───┤  │            SPECIALIZED AGENTS           │   │ │
+│  │ (Fallback)      │    │  │                                         │   │ │
+│  └─────────────────┘    │  │ ┌─────────┐ ┌─────────┐ ┌─────────────┐ │   │ │
+│                         │  │ │ANALYZER │ │GENERATOR│ │ VALIDATOR   │ │   │ │
+│                         │  │ │ AGENT   │ │ AGENT   │ │   AGENT     │ │   │ │
+│                         │  │ └─────────┘ └─────────┘ └─────────────┘ │   │ │
+│                         │  │                                         │   │ │
+│                         │  │ ┌─────────┐ ┌─────────────────────────┐ │   │ │
+│                         │  │ │SIMULATOR│ │      EVALUATOR          │ │   │ │
+│                         │  │ │ AGENT   │ │       AGENT             │ │   │ │
+│                         │  │ └─────────┘ └─────────────────────────┘ │   │ │
+│                         │  └─────────────────────────────────────────┘   │ │
+│                         └─────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+🎯 FLUJO PRINCIPAL DEL SISTEMA:
+
+1. CARGA DE DATOS
+   └─ Usuario sube dataset médico (CSV) via Streamlit
+   └─ Sistema detecta automáticamente tipo de dataset (COVID-19, diabetes, etc.)
+
+2. ANÁLISIS INTELIGENTE
+   └─ UniversalDatasetDetector mapea columnas automáticamente
+   └─ ClinicalAnalyzerAgent genera informe médico detallado
+
+3. GENERACIÓN SINTÉTICA
+   └─ Usuario selecciona modelo (CTGAN/TVAE/SDV) y parámetros
+   └─ GeneratorAgent crea datos sintéticos preservando patrones
+
+4. VALIDACIÓN MÉDICA
+   └─ ValidatorAgent verifica coherencia clínica y estructura
+   └─ Detecta inconsistencias médicas automáticamente
+
+5. SIMULACIÓN CLÍNICA
+   └─ SimulatorAgent modela evolución temporal de pacientes
+   └─ Genera historias clínicas con múltiples visitas
+
+6. EVALUACIÓN DE CALIDAD
+   └─ EvaluatorAgent calcula métricas de fidelidad y utilidad
+   └─ Genera informe de calidad para uso en investigación
+
+7. SIMULACIÓN TEMPORAL EVOLUCIÓN PACIENTES
+   └─ SimulatorAgent Simula la evolución de pacientes
+   └─ Genera informe de evolución de pacientes segun patología
+
+📁 ESTRUCTURA DETALLADA DEL PROYECTO
+================================================================================
+
+R35_sopra_steria/
+├── 📁 data/                           # Datasets médicos
+│   ├── real/                          # Datos originales procesados
+│   │   ├── cardiology_fict_data.csv
+│   │   ├── df_final_v2.csv
+│   │   ├── diabetes.csv
+│   │   └── filtered_covid_dataset.csv
+│   └── synthetic/                     # Cohortes sintéticas generadas
+│       ├── datos_sinteticos_ctgan.csv
+│       ├── datos_sinteticos_tvae.csv
+│       └── metadata_*.json
+│
+├── 📁 interfaces/                     # Interfaces de usuario
+│   ├── chat_llm.py                   # ⭐ Interfaz principal Streamlit
+│   ├── chat_llm_langgraph.py         # Interfaz LangGraph especializada
+│   └── chat_llm_unified.py           # Interfaz unificada (backup)
+│
+├── 📁 src/                           # Código fuente principal
+│   ├── 📁 agents/                    # ⭐ Sistema de agentes especializados
+│   │   ├── base_agent.py             # Clase base para todos los agentes
+│   │   ├── coordinator_agent.py      # ⭐ Coordinador principal
+│   │   ├── analyzer_agent.py         # ⭐ Análisis clínico
+│   │   ├── generator_agent.py        # ⭐ Generación sintética
+│   │   ├── validator_agent.py        # ⭐ Validación médica
+│   │   ├── simulator_agent.py        # ⭐ Simulación temporal
+│   │   └── evaluator_agent.py        # ⭐ Evaluación de calidad
+│   │
+│   ├── 📁 orchestration/             # ⭐ Orquestación de workflows
+│   │   ├── langgraph_orchestrator.py # ⭐ Orquestador principal LangGraph
+│   │   ├── fast_orchestrator.py      # Orquestador optimizado (fallback)
+│   │   └── simple_orchestrator.py    # Orquestador básico
+│   │
+│   ├── 📁 adapters/                  # Adaptadores de datos
+│   │   ├── universal_dataset_detector.py  # ⭐ Detección automática
+│   │   ├── medical_data_adapter.py   # Adaptador datos médicos
+│   │   └── medical_column_selector.py # Selector de columnas
+│   │
+│   ├── 📁 generation/                # ⭐ Modelos generativos
+│   │   ├── ctgan_generator.py        # Generador CTGAN
+│   │   ├── tvae_generator.py         # Generador TVAE
+│   │   └── sdv_generator.py          # Generador SDV
+│   │
+│   ├── 📁 validation/                # Validación clínica
+│   │   ├── medical_validator.py      # Validador médico
+│   │   └── schema_validator.py       # Validador de esquemas
+│   │
+│   ├── 📁 evaluation/                # ⭐ Evaluación de calidad
+│   │   └── evaluator.py              # Métricas ML y entidades médicas
+│   │
+│   ├── 📁 simulation/                # Simulación clínica
+│   │   └── clinical_simulator.py     # Simulador de evolución
+│   │
+│   ├── 📁 config/                    # Configuración del sistema
+│   │   ├── llm_config.py             # ⭐ Configuración LLMs
+│   │   └── pipeline_config.py        # ⭐ Configuración dinámica
+│   │
+│   └── 📁 utils/                     # Utilidades auxiliares
+│       ├── streamlit_async_wrapper.py # Wrapper para Streamlit+async
+│       └── [otras utilidades]
+│
+├── 📁 tests/                         # Pruebas del sistema
+│   ├── test_dependencies.py          # Verificación dependencias
+│   ├── test_phase_1_2.py            # Tests validación arquitectura
+│   ├── test_integration_flow.py      # Tests integración completa
+│   └── [otros tests]
+│
+├── 📁 notebooks/                     # Análisis exploratorio
+│   ├── EDA.ipynb                     # Análisis exploratorio
+│   ├── FAISS.ipynb                   # Búsqueda similitud
+│   └── umap_hdbscan_faiss.ipynb     # Clustering avanzado
+│
+├── 📁 docs/                          # Documentación médica
+├── 📁 outputs/                       # Salidas generadas
+├── 🔧 .env                           # ⭐ Variables de entorno
+├── 🔧 Pipfile                        # Dependencias Pipenv
+├── 🔧 requirements.txt               # Dependencias pip
+└── 📖 README.md                      # Documentación usuario
+
+⭐ = Archivos críticos para funcionamiento
+
+🔧 CONFIGURACIÓN E INSTALACIÓN
+================================================================================
+
+📋 REQUISITOS DEL SISTEMA:
+- Python 3.11 o superior
+- Sistema Operativo: Windows, macOS, Linux
+- Memoria RAM: Mínimo 8GB (16GB+ recomendado)
+- Espacio en disco: 2GB para instalación completa
+- API Key: Groq/Azure OpenAI/Ollama (para funcionalidades LLM)
+
+🚀 INSTALACIÓN RÁPIDA:
+
+# Opción 1: Pipenv (recomendado)
+git clone https://github.com/username/R35_sopra_steria.git
+cd R35_sopra_steria
+pipenv install
+pipenv shell
+
+# Opción 2: pip
+git clone https://github.com/username/R35_sopra_steria.git
+cd R35_sopra_steria
+python -m venv venv
+venv\Scripts\activate    # Windows
+source venv/bin/activate # macOS/Linux
+pip install -r requirements.txt
+
+⚙️ CONFIGURACIÓN DE VARIABLES DE ENTORNO (.env):
+
+# Configuración LLM (elegir una opción)
+
+# OPCIÓN 1: Groq (recomendado - más rápido)
+GROQ_API_KEY="tu_api_key_aqui"
+GROQ_MODEL="meta-llama/llama-4-scout-17b-16e-instruct"
+FORCE_GROQ=true
+
+# OPCIÓN 2: Azure OpenAI
+AZURE_OPENAI_API_KEY="tu_api_key_aqui"
+AZURE_OPENAI_ENDPOINT="https://tu-resource.openai.azure.com/"
+AZURE_OPENAI_DEPLOYMENT="tu_deployment"
+AZURE_OPENAI_API_VERSION="2024-02-01"
+
+# OPCIÓN 3: Ollama Local
+OLLAMA_MODEL="medllama2:latest"
+OLLAMA_BASE_URL="http://localhost:11434"
+
+🏃 EJECUCIÓN DEL SISTEMA:
+
+# Iniciar aplicación principal
+streamlit run interfaces/chat_llm.py
+
+# Acceder en navegador
+http://localhost:8501
+
+# Análisis con notebooks
+jupyter lab
+
+🤖 GUÍA DE AGENTES ESPECIALIZADOS
+================================================================================
+
+🎯 1. COORDINATOR AGENT (coordinator_agent.py)
+────────────────────────────────────────────────────────────────────────────
+PROPÓSITO: Punto de entrada principal, asistente médico conversacional
+CAPACIDADES:
+  ✅ Mantiene conversaciones médicas naturales
+  ✅ Identifica intenciones del usuario (conversación vs comando)
+  ✅ Orquesta delegación a agentes especializados
+  ✅ Extrae parámetros de comandos (modelo, num_samples, etc.)
+
+PROMPTS ESPECIALIZADOS:
+- Experto en IA médica conversacional
+- Diferencia entre chat casual y comandos de tarea
+- Extraer parámetros de generación automáticamente
+
+EJEMPLO DE USO:
+User: "¡Hola! ¿Cómo estás?"
+Response: {'intention': 'conversacion', 'message': '¡Hola! Soy tu asistente...'}
+
+User: "Analiza los datos de COVID-19"
+Response: {'intention': 'comando', 'agent': 'analyzer'}
+
+User: "Genera 200 muestras con CTGAN"
+Response: {'intention': 'comando', 'agent': 'generator', 
+          'parameters': {'num_samples': 200, 'model_type': 'ctgan'}}
+
+📊 2. ANALYZER AGENT (analyzer_agent.py)
+────────────────────────────────────────────────────────────────────────────
+PROPÓSITO: Análisis clínico profundo de datasets médicos
+CAPACIDADES:
+  ✅ Análisis estadístico de variables médicas
+  ✅ Identificación de patrones clínicos específicos
+  ✅ Detección de correlaciones médicamente relevantes
+  ✅ Generación de informes clínicos detallados
+
+ESPECIALIZACIÓN POR DOMINIO:
+- COVID-19: Análisis síntomas, severidad, comorbilidades
+- Diabetes: Análisis glucosa, HbA1c, complicaciones
+- Cardiología: Análisis factores riesgo cardiovascular
+- Genérico: Análisis exploratorio adaptativo
+
+MÉTRICAS GENERADAS:
+- Distribuciones de edad, género, diagnósticos
+- Correlaciones entre variables clínicas
+- Identificación de outliers médicos
+- Resumen de patrones temporales
+
+EJEMPLO DE SALIDA:
+```
+📋 ANÁLISIS CLÍNICO DETALLADO - DATASET COVID-19
+
+## 📊 CARACTERÍSTICAS DEMOGRÁFICAS
+- **Total pacientes**: 1,000
+- **Edad promedio**: 67.5 años (rango: 18-95)
+- **Distribución género**: 52% mujeres, 48% hombres
+
+## 🦠 ANÁLISIS ESPECÍFICO COVID-19
+- **Severidad casos**: 65% leves, 25% moderados, 10% severos
+- **Síntomas más frecuentes**: Fiebre (89%), tos (76%), fatiga (71%)
+- **Comorbilidades principales**: Hipertensión (34%), diabetes (28%)
+
+## 🔍 CORRELACIONES CLÍNICAS RELEVANTES
+- Edad avanzada correlaciona con mayor severidad (r=0.68)
+- Comorbilidades aumentan riesgo hospitalización (OR=2.4)
+```
+
+🧬 3. GENERATOR AGENT (generator_agent.py)
+────────────────────────────────────────────────────────────────────────────
+PROPÓSITO: Generación de datos sintéticos médicos de alta calidad
+CAPACIDADES:
+  ✅ Soporte múltiples modelos: CTGAN, TVAE, SDV
+  ✅ Preservación de correlaciones médicas complejas
+  ✅ Generación adaptativa por tipo de dataset
+  ✅ Control de parámetros de generación
+
+MODELOS DISPONIBLES:
+
+🔸 CTGAN (Conditional Tabular GAN):
+- Mejor para: Datos con muchas correlaciones complejas
+- Ventaja: Preserva relaciones no-lineales
+- Tiempo: Entrenamiento lento, generación rápida
+- Uso recomendado: Datasets grandes (>1000 filas)
+
+🔸 TVAE (Tabular Variational AutoEncoder):
+- Mejor para: Datos con distribuciones complejas
+- Ventaja: Estable, reproduce distribuciones fielmente
+- Tiempo: Entrenamiento moderado
+- Uso recomendado: Datos con muchas variables numéricas
+
+🔸 SDV (Gaussian Copula):
+- Mejor para: Generación rápida, datasets pequeños
+- Ventaja: Rápido, fácil de interpretar
+- Tiempo: Muy rápido entrenamiento y generación
+- Uso recomendado: Prototipado, datasets <500 filas
+
+SELECCIÓN AUTOMÁTICA DE COLUMNAS:
+- COVID-19: 10 columnas más relevantes (optimización)
+- Otros datasets: Todas las columnas disponibles
+- Filtrado inteligente: Elimina IDs, columnas vacías
+
+EJEMPLO DE USO:
+```python
+# Generación estándar
+result = generator_agent.generate_synthetic_data(
+    real_data=df_covid,
+    model_type="ctgan",
+    num_samples=500,
+    context={"dataset_type": "COVID-19"}
+)
+
+# Resultado incluye:
+# - DataFrame sintético
+# - Metadatos de generación
+# - Métricas de calidad básicas
+```
+
+✅ 4. VALIDATOR AGENT (validator_agent.py)
+────────────────────────────────────────────────────────────────────────────
+PROPÓSITO: Validación de coherencia médica y estructural
+CAPACIDADES:
+  ✅ Validación datos tabulares (pandas DataFrame)
+  ✅ Validación datos JSON sintéticos
+  ✅ Verificación reglas médicas específicas
+  ✅ Detección inconsistencias automática
+
+TIPOS DE VALIDACIÓN:
+
+🔸 Validación Estructural:
+- Tipos de datos correctos
+- Rangos de valores apropiados
+- Completitud de columnas obligatorias
+- Consistencia interna del dataset
+
+🔸 Validación Médica:
+- Coherencia edad-diagnóstico
+- Compatibilidad medicamentos-enfermedades
+- Rangos clínicos apropiados (signos vitales)
+- Lógica temporal de tratamientos
+
+🔸 Validación Específica por Dominio:
+- COVID-19: Síntomas compatibles, evolución lógica
+- Diabetes: Valores glucosa coherentes, medicación apropiada
+- Cardiología: Factores riesgo alineados
+
+MÉTRICAS DE VALIDACIÓN:
+- Score de coherencia clínica (0-100%)
+- Índice de completitud estructural
+- Número de inconsistencias detectadas
+- Recomendaciones de mejora
+
+EJEMPLO DE SALIDA:
+```
+✅ VALIDACIÓN COMPLETADA
+
+📊 MÉTRICAS DE VALIDACIÓN:
+- Score coherencia clínica: 94.2%
+- Completitud estructural: 98.7%
+- Inconsistencias detectadas: 3
+
+⚠️ INCONSISTENCIAS ENCONTRADAS:
+1. Paciente ID_245: Edad 25 años con diagnóstico "Insuficiencia cardíaca"
+2. Paciente ID_789: Medicación "Insulina" sin diagnóstico diabetes
+3. Registro ID_123: Presión arterial fuera de rango (300/150)
+
+💡 RECOMENDACIONES:
+- Revisar diagnósticos en población joven
+- Verificar coherencia medicación-diagnóstico
+- Validar rangos de signos vitales
+```
+
+⏱️ 5. SIMULATOR AGENT (simulator_agent.py)
+────────────────────────────────────────────────────────────────────────────
+PROPÓSITO: Simulación de evolución temporal de casos clínicos
+CAPACIDADES:
+  ✅ Simulación progresión de enfermedades
+  ✅ Generación de múltiples visitas médicas
+  ✅ Modelado de respuesta a tratamientos
+  ✅ Evolución realista de parámetros clínicos
+
+TIPOS DE SIMULACIÓN:
+
+🔸 Simulación COVID-19:
+- Progresión síntomas por fases
+- Evolución severidad (leve → moderado → severo)
+- Respuesta a tratamientos específicos
+- Modelado de recuperación/complicaciones
+
+🔸 Simulación Diabetes:
+- Control glucémico a lo largo del tiempo
+- Ajustes de medicación
+- Desarrollo de complicaciones
+- Seguimiento HbA1c trimestral
+
+🔸 Simulación Genérica:
+- Evolución adaptativa basada en diagnóstico
+- Progresión lógica de parámetros
+- Respuesta a intervenciones
+
+PARÁMETROS SIMULADOS:
+- Signos vitales (temperatura, presión, saturación)
+- Valores laboratorio (glucosa, marcadores)
+- Síntomas y su intensidad
+- Medicación y dosificación
+- Estado general del paciente
+
+EJEMPLO DE HISTORIA SIMULADA:
+```json
+{
+  "patient_id": "SIM_001",
+  "initial_diagnosis": "COVID-19 leve",
+  "visits": [
+    {
+      "day": 0,
+      "symptoms": ["fiebre_leve", "tos_seca"],
+      "vitals": {"temp": 38.2, "o2_sat": 97},
+      "treatment": ["paracetamol", "reposo"]
+    },
+    {
+      "day": 5,
+      "symptoms": ["fiebre_persistente", "fatiga"],
+      "vitals": {"temp": 38.8, "o2_sat": 94},
+      "treatment": ["paracetamol", "antivirales"]
+    },
+    {
+      "day": 14,
+      "symptoms": ["fatiga_leve"],
+      "vitals": {"temp": 37.1, "o2_sat": 98},
+      "status": "recuperación"
+    }
+  ]
+}
+```
+
+📈 6. EVALUATOR AGENT (evaluator_agent.py)
+────────────────────────────────────────────────────────────────────────────
+PROPÓSITO: Evaluación exhaustiva de calidad de datos sintéticos
+CAPACIDADES:
+  ✅ Métricas de fidelidad estadística
+  ✅ Evaluación utilidad para Machine Learning
+  ✅ Análisis preservación de correlaciones
+  ✅ Score de privacidad y anonimización
+
+MÉTRICAS EVALUADAS:
+
+🔸 Fidelidad Estadística (Peso: 50%):
+- Preservación de correlaciones (25%)
+- Similaridad de distribuciones (25%)
+- Cobertura de valores únicos (5%)
+
+🔸 Utilidad para ML (Peso: 20%):
+- Preservación F1-Score en modelos entrenados
+- Preservación Accuracy en tareas clasificación
+- Performance en validación cruzada
+
+🔸 Entidades Médicas (Peso: 15%):
+- F1-Score extracción entidades médicas
+- Calidad terminología médica preservada
+- Coherencia conceptos clínicos
+
+🔸 Privacidad (Peso: 10%):
+- Score no-replicación registros originales
+- Anonimización efectiva de datos sensibles
+- Resistencia a ataques de re-identificación
+
+CLASIFICACIÓN DE CALIDAD:
+- 🟢 Excelente (90-100%): Producción, estudios críticos
+- 🔵 Muy Bueno (80-89%): Investigación avanzada, aplicaciones ML
+- 🟡 Bueno (70-79%): Estudios exploratorios, desarrollo
+- 🟠 Aceptable (60-69%): Prototipado, pruebas concepto
+- 🔴 Limitado (<60%): Requiere mejoras significativas
+
+EJEMPLO DE INFORME:
+```
+📊 EVALUACIÓN DE CALIDAD - DATOS SINTÉTICOS COVID-19
+
+## 🎯 RESUMEN EJECUTIVO
+- **Score Final**: 87.3% (Muy Bueno)
+- **Recomendación**: Apto para investigación avanzada y aplicaciones ML
+- **Nivel de Confianza**: Alto
+
+## 📈 MÉTRICAS DETALLADAS
+### Fidelidad Estadística: 89.1%
+- Preservación correlaciones: 91.2%
+- Similaridad distribuciones: 87.5%
+- Cobertura valores únicos: 88.7%
+
+### Utilidad Machine Learning: 84.6%
+- Preservación F1-Score: 88.2%
+- Preservación Accuracy: 81.0%
+
+### Entidades Médicas: 79.4%
+- F1-Score extracción: 82.1%
+- Calidad terminología: Buena
+
+### Privacidad: 94.8%
+- No-replicación registros: 97.2%
+- Anonimización efectiva: 92.4%
+
+## 💡 RECOMENDACIONES
+✅ Excelente para estudios observacionales
+✅ Apropiado para entrenamiento modelos predictivos
+⚠️ Considerar validación adicional para estudios clínicos críticos
+```
+
+🔄 FLUJOS DE TRABAJO (WORKFLOWS)
+================================================================================
+
+El sistema implementa 5 workflows especializados orquestados por LangGraph:
+
+📋 1. ANALYZER WORKFLOW
+────────────────────────────────────────────────────────────────────────────
+TRIGGER: Usuario solicita "analizar datos", "análisis clínico"
+PASOS:
+1. Universal Dataset Detector → Detección automática tipo dataset
+2. Dynamic Pipeline Config → Configuración análisis específico
+3. Clinical Analyzer Agent → Análisis clínico profundo con LLM
+4. Generación informe médico detallado
+
+ENTRADA: DataFrame médico cargado
+SALIDA: Informe clínico en Markdown + metadatos análisis
+
+🧬 2. GENERATOR WORKFLOW  
+────────────────────────────────────────────────────────────────────────────
+TRIGGER: Usuario solicita "generar datos", "crear sintéticos"
+PASOS:
+1. Extracción parámetros (modelo, num_samples) del comando usuario
+2. Selección columnas relevantes (automática por tipo dataset)
+3. Generación con modelo seleccionado (CTGAN/TVAE/SDV)
+4. Post-procesamiento y packaging resultado
+
+ENTRADA: DataFrame real + parámetros generación
+SALIDA: DataFrame sintético + metadatos generación
+
+✅ 3. VALIDATOR WORKFLOW
+────────────────────────────────────────────────────────────────────────────
+TRIGGER: Usuario solicita "validar datos", "verificar coherencia"
+PASOS:
+1. Detección tipo de datos (tabular DataFrame vs JSON sintético)
+2. Aplicación reglas validación específicas por tipo
+3. Verificación coherencia médica especializada
+4. Generación report validación con inconsistencias
+
+ENTRADA: Datos a validar (cualquier formato)
+SALIDA: Informe validación + score coherencia + recomendaciones
+
+📊 4. EVALUATOR WORKFLOW
+────────────────────────────────────────────────────────────────────────────
+TRIGGER: Usuario solicita "evaluar calidad", "métricas datos"
+PASOS:
+1. Cálculo métricas fidelidad estadística
+2. Evaluación utilidad para Machine Learning
+3. Análisis entidades médicas preservadas
+4. Cálculo score privacidad y clasificación final
+
+ENTRADA: Datos originales + datos sintéticos
+SALIDA: Informe evaluación completo + score calidad
+
+⏱️ 5. SIMULATOR WORKFLOW
+────────────────────────────────────────────────────────────────────────────
+TRIGGER: Usuario solicita "simular evolución", "generar historias"
+PASOS:
+1. Selección pacientes para simulación
+2. Definición parámetros evolución por tipo enfermedad
+3. Simulación progresión temporal con múltiples visitas
+4. Generación historias clínicas completas
+
+ENTRADA: Datos base pacientes + parámetros simulación
+SALIDA: Historias clínicas con evolución temporal
+
+
+🔧 CONFIGURACIÓN Y PERSONALIZACIÓN
+================================================================================
+
+⚙️ CONFIGURACIÓN LLM (src/config/llm_config.py):
+
+El sistema soporta múltiples proveedores LLM con fallback automático:
+
+```python
+# Jerarquía de proveedores (orden prioridad)
+1. Groq (más rápido) - RECOMENDADO
+2. Azure OpenAI (más potente)
+3. Ollama (local, privacidad total)
+
+# Configuración automática basada en variables .env
+# El sistema detecta automáticamente qué proveedor usar
+```
+
+🔧 CONFIGURACIÓN DINÁMICA (src/config/pipeline_config.py):
+
+Perfiles especializados por tipo de dataset:
+
+```python
+# COVID-19 Profile
+covid_config = {
+    'analysis_focus': ['symptoms', 'severity', 'comorbidities'],
+    'key_columns': ['age', 'gender', 'diagnosis', 'symptoms'],
+    'validation_rules': ['covid_symptom_coherence', 'age_severity_correlation'],
+    'simulation_parameters': {'progression_days': 21, 'recovery_rate': 0.85}
+}
+
+# Diabetes Profile  
+diabetes_config = {
+    'analysis_focus': ['glucose_control', 'complications', 'medication'],
+    'key_columns': ['age', 'glucose', 'hba1c', 'insulin'],
+    'validation_rules': ['glucose_range_validation', 'medication_coherence'],
+    'simulation_parameters': {'follow_up_months': 12, 'control_target': 7.0}
+}
+
+# Generic Medical Profile
+generic_config = {
+    'analysis_focus': ['demographics', 'diagnoses', 'treatments'],
+    'key_columns': ['auto_detected'],
+    'validation_rules': ['basic_medical_coherence'],
+    'simulation_parameters': {'adaptive_evolution': True}
+}
+```
+
+🎛️ PARÁMETROS DE GENERACIÓN SINTÉTICA:
+
+```python
+# CTGAN Parameters
+ctgan_params = {
+    'epochs': 300,              # Entrenamiento más profundo
+    'batch_size': 500,          # Optimizado para datasets médicos
+    'generator_lr': 2e-4,       # Learning rate generador
+    'discriminator_lr': 2e-4,   # Learning rate discriminador
+    'pac': 10                   # Packing factor
+}
+
+# TVAE Parameters
+tvae_params = {
+    'epochs': 300,
+    'batch_size': 500,
+    'compress_dims': (128, 128), # Arquitectura encoder
+    'decompress_dims': (128, 128) # Arquitectura decoder
+}
+
+# SDV Parameters (Gaussian Copula)
+sdv_params = {
+    'numerical_distributions': {'gaussian': ['age', 'glucose']},
+    'categorical_fuzzy': True,   # Manejo categorías complejas
+    'default_distribution': 'gaussian_kde'
+}
+```
+
+📊 MÉTRICAS Y EVALUACIÓN AVANZADA
+================================================================================
+
+El sistema implementa un framework completo de evaluación con múltiples métricas:
+
+🔍 MÉTRICAS ESTADÍSTICAS:
+
+```python
+# Fidelidad Distribucional
+- Jensen-Shannon Divergence: Similaridad distribuciones
+- Kolmogorov-Smirnov Test: Distribuciones por variable
+- Chi-Square Test: Variables categóricas
+- Correlation Matrix Distance: Preservación correlaciones
+
+# Diversidad y Cobertura
+- Unique Value Coverage: % valores únicos preservados
+- Range Coverage: Cobertura rangos numéricos
+- Category Coverage: Cobertura categorías discretas
+- Outlier Preservation: Mantenimiento valores extremos
+```
+
+🤖 MÉTRICAS MACHINE LEARNING:
+
+```python
+# Utilidad Predictiva
+- F1-Score Preservation: Comparación modelos real vs sintético
+- Accuracy Preservation: Precisión clasificación preservada
+- AUC-ROC Preservation: Capacidad discriminatoria
+- Feature Importance Similarity: Importancia variables
+
+# Modelos de Evaluación Estándar
+- RandomForestClassifier: Clasificación general
+- LogisticRegression: Clasificación lineal
+- XGBoost: Clasificación ensemble
+- SVM: Clasificación kernel
+```
+
+🏥 MÉTRICAS MÉDICAS ESPECIALIZADAS:
+
+```python
+# Entidades Médicas (NER - Named Entity Recognition)
+- Medical Entity F1: Extracción terminología médica
+- Drug-Disease Coherence: Coherencia medicamentos-enfermedades
+- ICD-10 Code Validation: Validación códigos diagnóstico
+- Temporal Logic Consistency: Coherencia evolución temporal
+
+# Métricas Clínicas Específicas
+- Age-Diagnosis Correlation: Coherencia edad-diagnóstico
+- Comorbidity Patterns: Patrones comorbilidades preservados
+- Treatment Pathways: Rutas tratamiento lógicas
+- Outcome Distributions: Distribuciones resultados clínicos
+```
+
+🔐 MÉTRICAS DE PRIVACIDAD:
+
+```python
+# Riesgo Re-identificación
+- k-Anonymity Score: Anonimización k-anónima
+- l-Diversity Index: Diversidad valores sensibles
+- t-Closeness Measure: Cercanía distribucional
+- Differential Privacy Budget: Presupuesto privacidad
+
+# Análisis Membresía
+- Membership Inference Attack: Resistencia ataques membresía
+- Attribute Inference Risk: Riesgo inferencia atributos
+- Record Linkage Vulnerability: Vulnerabilidad linkage
+- Identity Disclosure Risk: Riesgo revelación identidad
+```
+
+🚨 SOLUCIÓN DE PROBLEMAS Y DEBUGGING
+================================================================================
+
+🐛 PROBLEMAS COMUNES Y SOLUCIONES:
+
+🔴 Error: "Dataset muy pequeño para generación"
+```
+CAUSA: Dataset <50 filas
+SOLUCIÓN: 
+- Combinar múltiples datasets similares
+- Usar parámetros generación más conservadores
+- Considerar aumentar datos con técnicas estadísticas
+```
+
+🔴 Error: "No se detectaron suficientes columnas médicas"
+```
+CAUSA: Columnas mal nombradas o falta información médica
+SOLUCIÓN:
+- Renombrar columnas siguiendo convenciones: 'age', 'gender', 'diagnosis'
+- Agregar columnas obligatorias faltantes
+- Verificar que hay al menos 2 columnas numéricas
+```
+
+🔴 Error: "LangGraph workflow initialization failed"
+```
+CAUSA: Problemas importación LangGraph o configuración agentes
+SOLUCIÓN:
+- Verificar instalación: pip install langgraph
+- Usar FastOrchestrator como fallback
+- Revisar configuración .env para API keys
+```
+
+🔴 Error: "Event loop is closed" en Streamlit
+```
+CAUSA: Conflicto async/sync entre Streamlit y LangGraph
+SOLUCIÓN:
+- Sistema usa StreamlitAsyncWrapper automáticamente
+- Reiniciar aplicación si persiste
+- Usar modo Simple Orchestrator temporal
+```
+
+🔴 Error: "Synthetic data generation failed"
+```
+CAUSA: Problemas modelo generativo o datos entrada
+SOLUCIÓN:
+- Probar modelo diferente (CTGAN → TVAE → SDV)
+- Reducir número columnas seleccionadas
+- Verificar calidad datos originales
+- Revisar logs detallados en terminal
+```
+
+📊 DEBUGGING Y MONITOREO:
+
+```python
+# Logs detallados disponibles
+- Dataset detection: universal_dataset_detector.py
+- Agent execution: [agent_name].py
+- Generation process: [generator_name].py
+- Validation results: validator_agent.py
+- Quality metrics: evaluator_agent.py
+
+# Activar modo debug
+DEBUG_MODE = True  # En .env para logs verbosos
+```
+
+🔍 HERRAMIENTAS DE DIAGNÓSTICO:
+
+```bash
+# Verificar dependencias
+python tests/test_dependencies.py
+
+# Test integración completa
+python tests/test_integration_flow.py
+
+# Verificar configuración LLM
+python tests/test_azure_basic.py
+
+# Test agentes individuales
+python tests/test_agent_flows.py
+```
+
+📈 EXTENSIBILIDAD Y DESARROLLO
+================================================================================
+
+🔧 AGREGAR NUEVOS TIPOS DE DATASET:
+
+```python
+# 1. Extender UniversalDatasetDetector
+def detect_cardiology_dataset(self, df):
+    cardiology_keywords = [
+        'ecg', 'cardiac', 'heart', 'cardiovascular',
+        'coronary', 'arterial', 'myocardial'
+    ]
+    # Implementar lógica detección
+
+# 2. Agregar configuración en pipeline_config.py
+cardiology_config = {
+    'analysis_focus': ['risk_factors', 'cardiac_markers', 'interventions'],
+    'key_columns': ['age', 'cholesterol', 'blood_pressure', 'ecg_result'],
+    'validation_rules': ['cardiac_risk_coherence', 'intervention_timing'],
+    'simulation_parameters': {'progression_months': 24, 'risk_stratification': True}
+}
+
+# 3. Especializar prompts en analyzer_agent.py
+cardiology_prompt = """
+Eres un especialista en cardiología analizando datos de pacientes cardiovasculares.
+Enfócate en factores de riesgo, marcadores cardíacos y patrones de intervención...
+"""
+```
+
+🎯 CREAR NUEVOS AGENTES:
+
+```python
+# Estructura base para nuevo agente
+from .base_agent import BaseLLMAgent, BaseAgentConfig
+
+class CustomMedicalAgent(BaseLLMAgent):
+    def __init__(self):
+        config = BaseAgentConfig(
+            name="Agente Personalizado",
+            description="Descripción funcionalidad específica",
+            system_prompt="Prompt especializado para tarea específica"
+        )
+        super().__init__(config, tools=[])  # Definir herramientas si necesario
+    
+    async def process(self, input_text: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
+        # Implementar lógica específica del agente
+        # Usar self.agent_executor.ainvoke() para llamadas LLM
+        pass
+```
+
+🔄 EXTENDER WORKFLOWS:
+
+```python
+# Agregar nuevo workflow en langgraph_orchestrator.py
+def _create_custom_workflow(self):
+    workflow = StateGraph(AgentState)
+    
+    # Definir nodos
+    workflow.add_node("custom_node", self._custom_node)
+    
+    # Definir transiciones
+    workflow.add_conditional_edges(
+        "coordinator",
+        self._route_from_coordinator,
+        {"custom": "custom_node"}
+    )
+    
+    return workflow.compile()
+```
+
+📚 RECURSOS Y REFERENCIAS
+================================================================================
+
+📖 DOCUMENTACIÓN TÉCNICA:
+- LangGraph: https://langchain-ai.github.io/langgraph/
+- SDV (Synthetic Data Vault): https://docs.sdv.dev/
+- CTGAN: https://github.com/sdv-dev/CTGAN
+- Streamlit: https://docs.streamlit.io/
+
+🎓 REFERENCIAS ACADÉMICAS:
+- Xu, L., et al. "Modeling Tabular Data using Conditional GAN" (CTGAN)
+- Patki, N., et al. "The Synthetic Data Vault" (SDV Framework)
+- Medical Data Synthesis: https://physionet.org/about/
+- MIMIC-IV Dataset: https://physionet.org/content/mimiciv/
+
+🏥 ESTÁNDARES MÉDICOS:
+- ICD-10 Classification: https://icd.who.int/
+- HL7 FHIR: https://www.hl7.org/fhir/
+- Medical Terminology: SNOMED CT, UMLS
+
+💼 CASOS DE USO EMPRESARIALES
+================================================================================
+
+🏥 SECTOR SALUD:
+- Hospitales: Datos prueba sistemas HIS/EMR
+- Farmacéuticas: Datasets ensayos clínicos sintéticos
+- Aseguradoras: Modelado riesgo sin datos sensibles
+- Investigación: Datos públicos para estudios colaborativos
+
+🎓 SECTOR ACADÉMICO:
+- Universidades: Datasets enseñanza medicina/estadística
+- Investigación: Validación metodologías sin restricciones éticas
+- Tesis/TFM: Datos proyecto sin problemas confidencialidad
+- Competiciones: Datasets públicos hackathons médicos
+
+🏢 SECTOR TECNOLÓGICO:
+- Startups HealthTech: Prototipado sin datos reales
+- Consultoras: Demostraciones capacidades IA médica
+- Desarrolladores: Testing aplicaciones médicas
+- MLOps: Pipelines ML sin dependencia datos sensibles
+
+🔮 ROADMAP Y FUTURO DESARROLLO
+================================================================================
+
+📅 PRÓXIMAS FUNCIONALIDADES (Q3-Q4 2025):
+
+🎯 FASE 3 - SIMULACIÓN AVANZADA:
+- [ ] Simulación multi-paciente con interacciones
+- [ ] Modelado epidemiológico poblacional
+- [ ] Generación historias clínicas narrativas (texto libre)
+- [ ] Simulación ensayos clínicos completos
+
+🎯 FASE 4 - INTELIGENCIA AVANZADA:
+- [ ] Integración modelos fundacionales médicos (BioGPT, ClinicalBERT)
+- [ ] Generación automática hipótesis clínicas
+- [ ] Validación con ontologías médicas (UMLS, SNOMED)
+- [ ] Sistema recomendación tratamientos sintéticos
+
+🎯 FASE 5 - PRODUCCIÓN ENTERPRISE:
+- [ ] API REST completa para integración sistemas
+- [ ] Dashboard web administración cohortes
+- [ ] Sistema autenticación y autorización
+- [ ] Monitoreo métricas tiempo real
+- [ ] Escalabilidad horizontal (Kubernetes)
+
+🌟 VISIÓN A LARGO PLAZO:
+- Hospital Virtual Completo: Ecosistema sintético completo
+- IA Médica Conversacional: Asistente clínico avanzado
+- Gemelos Digitales Pacientes: Simulación personalizada
+- Plataforma SaaS Global: Servicio generación bajo demanda
+
+💡 CONTRIBUCIÓN Y COMUNIDAD
+================================================================================
+
+🤝 CÓMO CONTRIBUIR:
+- Fork del repositorio en GitHub
+- Crear branch para feature/bugfix
+- Seguir guías estilo código (PEP 8)
+- Agregar tests para nuevas funcionalidades
+- Documentar cambios en commit messages
+- Pull request con descripción detallada
+
+📧 CONTACTO Y SOPORTE:
+- Issues GitHub: Para bugs y feature requests
+- Discusiones: Para preguntas técnicas y ideas
+- Email: [contact@patientia.dev] (placeholder)
+
+🎓 COLABORACIÓN ACADÉMICA:
+- Citas proyecto: Disponible formato BibTeX
+- Datos ejemplo: Datasets sintéticos públicos
+- Metodología: Papers y documentación técnica
+- Colaboraciones: Proyectos investigación conjunto
+
+📄 LICENCIA Y TÉRMINOS
+================================================================================
+
+📋 LICENCIA: Especificada en archivo LICENSE del repositorio
+🏢 DERECHOS: Copyright 2024-2025 Patientia - Sopra Steria TFM
+⚖️ USO: Consultar términos específicos en documentación legal
+🔒 PRIVACIDAD: No almacenamiento persistente datos reales
+🛡️ SEGURIDAD: Medidas técnicas protección datos sensibles
+
+================================================================================
+                                    FIN DOCUMENTACIÓN
+                          Patientia R35 - Generador IA Clínico
+                                Sopra Steria TFM 2024-2025
+================================================================================
+
+FECHA ACTUALIZACIÓN: Julio 2025
+VERSIÓN DOCUMENTACIÓN: 1.0
+ESTADO SISTEMA: Completamente funcional y operativo
+NIVEL PRODUCCIÓN: Listo para implementación empresarial
+
+Para más información, consultar:
+- README.md: Guía usuario final  
+- /docs/: Documentación adicional y guías específicas
+- /tests/: Ejemplos código y casos de uso
