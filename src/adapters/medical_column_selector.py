@@ -8,13 +8,14 @@ import streamlit as st
 from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass
 from enum import Enum
-import logging
+# import logging
+from src.utils.logging_config import get_logger
 
 from .universal_dataset_detector import (
     UniversalDatasetDetector, DatasetType, ColumnType, ColumnMapping
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class MedicalRequirement(Enum):
     """Requisitos médicos mínimos para generación sintética"""

@@ -1,0 +1,20 @@
+# Requirements específicos para la API
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+pydantic==2.5.0
+psutil==5.9.6
+
+# Para CORS y middleware
+python-jose[cryptography]==3.3.0
+
+# Para archivos y datos
+pandas==2.1.4
+openpyxl==3.1.2
+
+# Para tareas en background
+celery==5.3.4
+redis==5.0.1
+
+# Logging y monitoreo
+structlog==23.2.0

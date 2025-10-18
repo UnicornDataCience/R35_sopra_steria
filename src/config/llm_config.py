@@ -7,14 +7,17 @@ import os
 from typing import Optional, Dict, Any, Union
 from dotenv import load_dotenv
 from abc import ABC, abstractmethod
+import logging
 
 # Cargar variables de entorno
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 # FORZAR GROQ - Sobrescribir variable del sistema
 if os.getenv('FORCE_GROQ', 'false').lower() == 'true':
     os.environ['LLM_PROVIDER'] = 'groq'
-    print("🚀 [DEBUG] Variable LLM_PROVIDER forzada a 'groq'")
+    logger.debug("[DEBUG] Variable LLM_PROVIDER forzada a 'groq'")
 
 class BaseLLMProvider(ABC):
     """Clase base para todos los proveedores de LLM"""
@@ -60,7 +63,7 @@ class AzureOpenAIProvider(BaseLLMProvider):
                 self.available = True
             
         except ImportError:
-            print("⚠️ Azure OpenAI no disponible - langchain_openai no instalado")
+            logger.warning("Azure OpenAI no disponible - langchain_openai no instalado")
     
     def create_llm(self, temperature: float = 0.1, max_tokens: int = 2000, **kwargs):
         if not self.available:
@@ -87,9 +90,9 @@ class AzureOpenAIProvider(BaseLLMProvider):
         except Exception as e:
             error_msg = str(e)
             if "DeploymentNotFound" in error_msg:
-                print(f"❌ Azure: Deployment '{self.deployment}' no encontrado")
+                logger.error("Azure: Deployment '%s' no encontrado", self.deployment)
             else:
-                print(f"❌ Azure: Error de conexión - {e}")
+                logger.error("Azure: Error de conexión - %s", e)
             return False
 
 class OllamaProvider(BaseLLMProvider):
@@ -103,8 +106,7 @@ class OllamaProvider(BaseLLMProvider):
             self.model = os.getenv("OLLAMA_MODEL", "deepseek-r1:latest")
             self.available = True
         except ImportError:
-            print("⚠️ Ollama no disponible - langchain_ollama no instalado")
-            print("   Instalar con: pip install langchain-ollama")
+            logger.warning("Ollama no disponible - langchain_ollama no instalado. Instalar con: pip install langchain-ollama")
     
     def create_llm(self, temperature: float = 0.1, max_tokens: int = 2000, **kwargs):
         if not self.available:
@@ -130,13 +132,13 @@ class OllamaProvider(BaseLLMProvider):
                 if any(self.model in model for model in available_models):
                     return True
                 else:
-                    print(f"❌ Ollama: Modelo '{self.model}' no encontrado")
-                    print(f"   Modelos disponibles: {available_models}")
+                    logger.error("Ollama: Modelo '%s' no encontrado", self.model)
+                    logger.error("Modelos disponibles: %s", available_models)
                     return False
             return False
         except Exception as e:
-            print(f"❌ Ollama: Error de conexión - {e}")
-            print(f"   Verifica que Ollama esté ejecutándose en {self.base_url}")
+            logger.error("Ollama: Error de conexión - %s", e)
+            logger.error("Verifica que Ollama esté ejecutándose en %s", self.base_url)
             return False
 
 class GrokProvider(BaseLLMProvider):
@@ -178,14 +180,15 @@ class GrokProvider(BaseLLMProvider):
             )
     
     def test_connection(self) -> bool:
+        # Evitar pruebas de red por defecto en import
         if not self.available:
             return False
         try:
             llm = self.create_llm()
-            response = llm.invoke("Test connection")
+            _ = llm.invoke("Test connection")
             return True
         except Exception as e:
-            print(f"❌ Grok: Error de conexión - {e}")
+            logger.error("Grok: Error de conexión - %s", e)
             return False
 
 class GroqProvider(BaseLLMProvider):
@@ -196,17 +199,24 @@ class GroqProvider(BaseLLMProvider):
         try:
             self.api_key = os.getenv("GROQ_API_KEY")
             self.base_url = "https://api.groq.com/openai/v1"
-            self.model = os.getenv("GROQ_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+            self.model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+            self.temperature_default = float(os.getenv("GROQ_TEMPERATURE", "0.1"))
+            self.max_tokens_default = int(os.getenv("GROQ_MAX_TOKENS", "1500"))
+            self.chunk_size_tokens = int(os.getenv("GROQ_CHUNK_SIZE", "3000"))
             
             if self.api_key:
                 self.available = True
-                print(f"✅ Groq configurado con modelo: {self.model}")
+                logger.info("Groq configurado con modelo: %s", self.model)
         except Exception as e:
-            print(f"❌ Error configurando Groq: {e}")
+            logger.error("Error configurando Groq: %s", e)
     
-    def create_llm(self, temperature: float = 0.1, max_tokens: int = 2000, **kwargs):
+    def create_llm(self, temperature: float = None, max_tokens: int = None, **kwargs):
         if not self.available:
             raise RuntimeError("Groq no está disponible")
+        
+        # Usar defaults optimizados si no vienen parámetros
+        temperature = self.temperature_default if temperature is None else temperature
+        max_tokens = self.max_tokens_default if max_tokens is None else max_tokens
         
         try:
             from langchain_groq import ChatGroq
@@ -238,15 +248,105 @@ class GroqProvider(BaseLLMProvider):
                     max_tokens=max_tokens
                 )
     
+    # --- Utilidades integradas ---
+    def estimate_tokens(self, text: str) -> int:
+        """Estimación simple: ~1 token por 4 caracteres."""
+        return max(1, len(text) // 4)
+    
+    def chunk_text(self, text: str, max_chunk_tokens: Optional[int] = None) -> list:
+        """Divide el texto en chunks para evitar límites de tokens por request."""
+        size = max_chunk_tokens or self.chunk_size_tokens
+        max_chars = size * 4  # Aproximación
+        chunks = []
+        current = ""
+        for paragraph in text.split("\n\n"):
+            # +2 por los dos saltos agregados
+            if len(current) + len(paragraph) + 2 <= max_chars:
+                current += paragraph + "\n\n"
+            else:
+                if current:
+                    chunks.append(current.strip())
+                current = paragraph + "\n\n"
+        if current:
+            chunks.append(current.strip())
+        return chunks
+    
+    def safe_invoke(self, llm, prompt: str, max_retries: int = 3) -> str:
+        """Invoca el LLM manejando rate limits y reduciendo tamaño si es necesario."""
+        for attempt in range(max_retries):
+            try:
+                return llm.invoke(prompt)
+            except Exception as e:
+                msg = str(e).lower()
+                if ("rate_limit" in msg) or ("tpm" in msg) or ("413" in msg):
+                    logger.warning("Rate limit detectado (intento %d/%d)", attempt + 1, max_retries)
+                    if attempt < max_retries - 1:
+                        # Reducir tamaño del prompt o esperar
+                        if len(prompt) > 2000:
+                            prompt = prompt[:2000] + "..."
+                            logger.info("Reduciendo tamaño del prompt...")
+                        else:
+                            import time
+                            logger.info("Esperando 5s antes de reintentar...")
+                            time.sleep(5)
+                        continue
+                # Si no es rate limit u otros intentos agotados, propagar
+                raise
+        return ""
+    
     def test_connection(self) -> bool:
         if not self.available:
             return False
         try:
-            llm = self.create_llm()
-            response = llm.invoke("Hello")
+            # Usar pocos tokens en el test
+            llm = self.create_llm(max_tokens=100)
+            _ = llm.invoke("Hello")
             return True
         except Exception as e:
-            print(f"❌ Groq: Error de conexión - {e}")
+            logger.error("Groq: Error de conexión - %s", e)
+            return False
+
+class GeminiProvider(BaseLLMProvider):
+    """Proveedor para Google Gemini"""
+    
+    def __init__(self):
+        super().__init__("Gemini")
+        try:
+            self.api_key = os.getenv("GEMINI_API_KEY")
+            self.model = os.getenv("GEMINI_MODEL", "gemini-1.5-pro")
+            
+            if self.api_key:
+                self.available = True
+                logger.info("Gemini configurado con modelo: %s", self.model)
+        except Exception as e:
+            logger.error("Error configurando Gemini: %s", e)
+    
+    def create_llm(self, temperature: float = 0.1, max_tokens: int = 2000, **kwargs):
+        if not self.available:
+            raise RuntimeError("Gemini no está disponible")
+        
+        try:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            return ChatGoogleGenerativeAI(
+                model=self.model,
+                google_api_key=self.api_key,
+                temperature=temperature,
+                max_output_tokens=max_tokens,
+                **kwargs
+            )
+        except ImportError:
+            logger.error("langchain_google_genai no instalado. Instalar con: pip install langchain-google-genai")
+            raise RuntimeError("langchain_google_genai no disponible")
+    
+    def test_connection(self) -> bool:
+        if not self.available:
+            return False
+        try:
+            llm = self.create_llm(max_tokens=100)
+            _ = llm.invoke("Hello")
+            return True
+        except Exception as e:
+            logger.error("Gemini: Error de conexión - %s", e)
             return False
 
 class GroqDirectLLM:
@@ -290,43 +390,31 @@ class UnifiedLLMConfig:
             "azure": AzureOpenAIProvider(),
             "ollama": OllamaProvider(), 
             "grok": GrokProvider(),
-            "groq": GroqProvider()
+            "groq": GroqProvider(),
+            "gemini": GeminiProvider()
         }
         
-        # Determinar proveedor activo
+        # Selección perezosa: preferir env o Groq por defecto, sin pruebas de red
         self.active_provider = self._determine_active_provider()
-        print(f"🔧 Proveedor LLM activo: {self.active_provider}")
+        logger.info("Proveedor LLM activo: %s", self.active_provider)
     
     def _determine_active_provider(self) -> str:
-        """Determina qué proveedor usar basado en disponibilidad y configuración"""
-        
-        # 1. Verificar si hay preferencia explícita
-        preferred = os.getenv("LLM_PROVIDER", "").lower()
-        print(f"🔍 Preferencia LLM_PROVIDER: {preferred}")
+        """Determina proveedor sin test de conexión (lazy)."""
+        preferred = (os.getenv("LLM_PROVIDER") or "").lower()
+        if not preferred:
+            preferred = "groq"  # Preferencia por defecto confirmada por usuario
+        logger.debug("Preferencia LLM_PROVIDER: %s", preferred)
         
         if preferred in self.providers and self.providers[preferred].available:
-            print(f"🧪 Probando conexión para {preferred}...")
-            if self.providers[preferred].test_connection():
-                print(f"✅ {preferred} funciona - seleccionado")
-                return preferred
-            else:
-                print(f"❌ {preferred} falló test de conexión")
+            return preferred
         
-        # 2. Buscar el primer proveedor disponible y funcional
-        priority_order = ["groq", "azure", "grok", "ollama"]
-        print(f"🔄 Probando proveedores en orden: {priority_order}")
+        # Orden de prioridad si el preferido no está disponible
+        for name in ["gemini", "groq", "azure", "grok", "ollama"]:
+            provider = self.providers.get(name)
+            if provider and provider.available:
+                return name
         
-        for provider_name in priority_order:
-            provider = self.providers[provider_name]
-            print(f"   🧪 {provider_name}: disponible={provider.available}")
-            if provider.available and provider.test_connection():
-                print(f"   ✅ {provider_name} seleccionado")
-                return provider_name
-            else:
-                print(f"   ❌ {provider_name} falló")
-        
-        # 3. Fallback a modo simulado
-        print("⚠️ Ningún proveedor LLM disponible - modo simulado activado")
+        logger.warning("Ningún proveedor LLM disponible - modo simulado activado")
         return "mock"
     
     def create_llm(self, temperature: float = 0.1, max_tokens: int = 2000, **kwargs):
@@ -347,20 +435,20 @@ class UnifiedLLMConfig:
     def switch_provider(self, provider_name: str) -> bool:
         """Cambia el proveedor activo"""
         if provider_name not in self.providers:
-            print(f"❌ Proveedor '{provider_name}' no válido")
+            logger.error("Proveedor '%s' no válido", provider_name)
             return False
         
         provider = self.providers[provider_name]
         if not provider.available:
-            print(f"❌ Proveedor '{provider_name}' no disponible")
+            logger.error("Proveedor '%s' no disponible", provider_name)
             return False
         
         if provider.test_connection():
             self.active_provider = provider_name
-            print(f"✅ Cambiado a proveedor: {provider_name}")
+            logger.info("Cambiado a proveedor: %s", provider_name)
             return True
         else:
-            print(f"❌ No se pudo conectar a '{provider_name}'")
+            logger.error("No se pudo conectar a '%s'", provider_name)
             return False
     
     @property
@@ -380,7 +468,7 @@ class MockLLM:
     """LLM simulado para desarrollo sin conexión"""
     
     def invoke(self, prompt: str) -> str:
-        return f"🤖 **Respuesta Simulada**\n\nHe recibido tu consulta: *\"{prompt[:100]}...\"*\n\n📋 **Procesamiento completado en modo simulado**\n\n*Configura un proveedor LLM (Azure, Ollama o Grok) para obtener respuestas reales.*"
+        return f'🤖 **Respuesta Simulada**\n\nHe recibido tu consulta: *\"{prompt[:100]}...\"*\n\n📋 **Procesamiento completado en modo simulado**\n\n*Configura un proveedor LLM (Azure, Ollama o Grok) para obtener respuestas reales.*'
 
 # Instancia global unificada
 unified_llm_config = UnifiedLLMConfig()

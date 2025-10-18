@@ -177,16 +177,46 @@ class TVAEGenerator:
                 # Para columnas no numéricas, categórico
                 metadata.update_column(column_name=col, sdtype='categorical')
         metadata.validate()
+        print(f"✅ TVAE - Metadata validado correctamente para {len(real_df.columns)} columnas.")
+        
+        # Limitar tamaño del dataset para el fitting si es muy grande
+        MAX_ROWS_FOR_FITTING = 5000
+        if len(real_df) > MAX_ROWS_FOR_FITTING:
+            print(f"⚠️ TVAE - Dataset muy grande ({len(real_df)} filas). Usando muestra de {MAX_ROWS_FOR_FITTING} filas para el fitting.")
+            real_df_for_fitting = real_df.sample(n=MAX_ROWS_FOR_FITTING, random_state=42)
+        else:
+            real_df_for_fitting = real_df
+        
         # Usar nombre único para metadata temporal y eliminar tras uso
         tmp_json = f"metadata_tvae_{uuid.uuid4().hex}.json"
         try:
             metadata.save_to_json(tmp_json)
-            synth = TVAESynthesizer(metadata)
-            synth.fit(real_df)
+            print(f"🔧 TVAE - Inicializando sintetizador con {len(real_df_for_fitting)} filas...")
+            
+            # Configurar TVAE con parámetros más ligeros para evitar timeout
+            synth = TVAESynthesizer(
+                metadata,
+                epochs=100,  # Reducido de default (300) para mayor velocidad
+                batch_size=500,  # Aumentado para mayor eficiencia
+                verbose=True
+            )
+            
+            print(f"🎯 TVAE - Iniciando fitting del modelo (esto puede tomar unos minutos)...")
+            synth.fit(real_df_for_fitting)
+            print(f"✅ TVAE - Modelo entrenado exitosamente. Generando {n_samples} muestras...")
+            
             result = synth.sample(n_samples)
+            print(f"🎉 TVAE - Generación completada: {len(result)} registros sintéticos creados.")
+            
+        except Exception as e:
+            print(f"❌ TVAE - Error durante la generación: {str(e)}")
+            import traceback
+            print(traceback.format_exc())
+            raise
         finally:
             if os.path.exists(tmp_json):
                 os.remove(tmp_json)
+        
         return result
 
 # NUEVO: Guardar JSON limpio

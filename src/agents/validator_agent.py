@@ -1,9 +1,16 @@
 from typing import Dict, Any
 import pandas as pd
 import numpy as np
+import time
+from src.utils.logging_config import get_logger
 from .base_agent import BaseLLMAgent, BaseAgentConfig
 from src.validation.clinical_rules import validate_patient_case
 from src.validation.json_schema import validate_json, pacient_schema
+from src.validation.validation_cache import get_validation_cache
+from src.validation.validation_metrics import get_validator_tracker, ValidationMetrics
+from src.validation.rules_engine import get_rules_engine
+
+logger = get_logger(__name__)
 
 class MedicalValidatorAgent(BaseLLMAgent):
     """Agente especializado en validación médica de datos sintéticos"""
@@ -49,8 +56,52 @@ El dataset sintético muestra una **alta coherencia general (XX.X%)**.
             return {"message": "Error: No se encontraron datos para validar. Sube un dataset o genera datos sintéticos.", "agent": self.name, "error": True}
 
         try:
-            is_covid = context.get('universal_analysis', {}).get('dataset_type') == 'COVID-19'
-            validation_results = self._perform_medical_validations(data_to_validate, is_covid, validation_mode)
+            start_time = time.time()
+            
+            # Detectar tipo de dataset
+            dataset_type = context.get('universal_analysis', {}).get('dataset_type', 'Generic')
+            is_covid = dataset_type == 'COVID-19'
+            
+            # Intentar recuperar del caché
+            cache = get_validation_cache()
+            cached_results = cache.get(data_to_validate, is_covid, validation_mode)
+            
+            if cached_results is not None:
+                # Cache HIT
+                validation_results = cached_results
+                cache_hit = True
+                logger.info(f"✅ Validation cache HIT for {validation_mode} data ({data_to_validate.shape[0]} rows)")
+            else:
+                # Cache MISS - Realizar validación
+                cache_hit = False
+                logger.info(f"🔍 Validating {validation_mode} data ({data_to_validate.shape[0]} rows, {data_to_validate.shape[1]} cols)")
+                validation_results = self._perform_medical_validations(data_to_validate, is_covid, validation_mode, dataset_type)
+                
+                # Guardar en caché
+                cache.put(data_to_validate, is_covid, validation_mode, validation_results)
+            
+            # Métricas de performance
+            elapsed_ms = (time.time() - start_time) * 1000
+            
+            # Registrar métricas
+            metrics = ValidationMetrics(
+                validation_mode=validation_mode,
+                is_covid=is_covid,
+                num_rows=len(data_to_validate),
+                num_columns=len(data_to_validate.columns),
+                overall_score=validation_results.get('overall_score', 0),
+                clinical_coherence=validation_results.get('clinical_coherence', 0),
+                data_quality=validation_results.get('data_quality', 0),
+                num_issues=len(validation_results.get('issues', [])),
+                issues=validation_results.get('issues', []),
+                validation_time_ms=elapsed_ms,
+                cache_hit=cache_hit
+            )
+            
+            tracker = get_validator_tracker()
+            tracker.record(metrics)
+            
+            logger.info(f"⏱️ Validation completed in {elapsed_ms:.2f}ms (cache_hit={cache_hit})")
 
             # Crear el prompt para el LLM con los resultados
             prompt = self._create_llm_prompt(validation_results, validation_mode)
@@ -62,9 +113,14 @@ El dataset sintético muestra una **alta coherencia general (XX.X%)**.
                 "message": informe_markdown.content,
                 "agent": self.name,
                 "validation_results": validation_results,
-                "validation_mode": validation_mode
+                "validation_mode": validation_mode,
+                "performance": {
+                    "validation_time_ms": elapsed_ms,
+                    "cache_hit": cache_hit
+                }
             }
         except Exception as e:
+            logger.error("Error durante la validación: %s", e)
             return {"message": f"Error durante la validación: {e}", "agent": self.name, "error": True}
 
     def _create_llm_prompt(self, results: Dict[str, Any], validation_mode: str = "sintéticos") -> str:
@@ -90,67 +146,39 @@ Por favor, genera un informe en Markdown sobre la calidad y coherencia médica d
         
         return prompt
 
-    def _perform_medical_validations(self, data: pd.DataFrame, is_covid_dataset: bool, validation_mode: str = "sintéticos") -> Dict[str, Any]:
+    def _perform_medical_validations(self, data: pd.DataFrame, is_covid_dataset: bool, validation_mode: str = "sintéticos", dataset_type: str = "Generic") -> Dict[str, Any]:
         """Realiza validaciones médicas específicas y devuelve un diccionario de resultados."""
         results = {"issues": []}
         
-        # 1. Calidad de Datos (Esquema) - APLICAR DIFERENTE VALIDACIÓN SEGÚN EL TIPO
-        if validation_mode == "sintéticos":
-            # Para datos sintéticos (que son tabulares): usar la misma validación estructural que para los originales.
-            structural_score = self._validate_tabular_structure(data)
-            results['data_quality'] = structural_score
-            if structural_score < 0.8:
+        # 1. Calidad de Datos (Esquema)
+        structural_score = self._validate_tabular_structure(data)
+        results['data_quality'] = structural_score
+        if structural_score < 0.8:
+            if validation_mode == "sintéticos":
                 results['issues'].append("La estructura tabular de los datos sintéticos presenta algunas inconsistencias.")
-        else:
-            # Para datos originales: validación tabular más flexible
-            structural_score = self._validate_tabular_structure(data)
-            results['data_quality'] = structural_score
-            if structural_score < 0.8:
+            else:
                 results['issues'].append("La estructura tabular de los datos originales presenta algunas inconsistencias menores.")
 
-        # 2. Coherencia Clínica (Reglas) - Con detección automática de columnas
-        if is_covid_dataset:
-            # Detectar columnas de temperatura
-            temp_cols = [col for col in data.columns if any(term in col.lower() for term in ['temp', 'temperatura'])]
-            # Detectar columnas de saturación de oxígeno
-            sat_cols = [col for col in data.columns if any(term in col.lower() for term in ['sat', 'oxygen', 'oxigeno', 'o2'])]
-            
-            temp_valid = 1.0  # Default si no encuentra columna
-            sat_valid = 1.0   # Default si no encuentra columna
-            
-            if temp_cols:
-                temp_col = temp_cols[0]
-                # Convertir a numérico, manejando valores no numéricos
-                temp_data = pd.to_numeric(data[temp_col], errors='coerce')
-                temp_valid = temp_data.between(35.0, 42.0).mean()
-                
-            if sat_cols:
-                sat_col = sat_cols[0]
-                # Convertir a numérico, manejando valores no numéricos
-                sat_data = pd.to_numeric(data[sat_col], errors='coerce')
-                sat_valid = sat_data.between(70, 100).mean()
-            
-            results['clinical_coherence'] = np.mean([temp_valid, sat_valid])
-            if results['clinical_coherence'] < 0.9:
-                results['issues'].append("Algunos signos vitales en el dataset de COVID están fuera de rangos plausibles.")
-        else:
-            # Detectar columnas de edad
-            age_cols = [col for col in data.columns if any(term in col.lower() for term in ['age', 'edad'])]
-            
-            age_valid = 1.0  # Default si no encuentra columna
-            
-            if age_cols:
-                age_col = age_cols[0]
-                # Convertir a numérico, manejando valores no numéricos
-                age_data = pd.to_numeric(data[age_col], errors='coerce')
-                age_valid = age_data.between(0, 120).mean()
-                
-            results['clinical_coherence'] = age_valid
-            if results['clinical_coherence'] < 0.95:
-                results['issues'].append("Se detectaron edades fuera del rango plausible (0-120 años).")
+        # 2. Coherencia Clínica con Motor de Reglas Configurables
+        rules_engine = get_rules_engine()
+        rules_validation = rules_engine.validate_dataframe(data, dataset_type)
+        
+        # Combinar scores
+        results['clinical_coherence'] = rules_validation['overall_score']
+        results['numeric_score'] = rules_validation.get('numeric_score', 1.0)
+        results['categorical_score'] = rules_validation.get('categorical_score', 1.0)
+        results['total_checks'] = rules_validation.get('total_checks', 0)
+        
+        # Agregar issues de las reglas
+        results['issues'].extend(rules_validation['issues'])
+        
+        # Logging detallado
+        logger.info(f"📊 Clinical coherence: {results['clinical_coherence']:.3f} ({results['total_checks']} checks)")
+        logger.info(f"📊 Data quality: {results['data_quality']:.3f}")
 
-        # 3. Score General
-        results['overall_score'] = np.mean([results['data_quality'], results['clinical_coherence']])
+        # 3. Score General (ponderado: 60% clinical coherence, 40% data quality)
+        results['overall_score'] = (results['clinical_coherence'] * 0.6) + (results['data_quality'] * 0.4)
+        
         return results
 
     def _validate_tabular_structure(self, data: pd.DataFrame) -> float:

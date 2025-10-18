@@ -12,12 +12,15 @@ from pydantic import BaseModel, Field
 import os
 from dotenv import load_dotenv
 
-# Importaciones de LangChain
-from langchain_openai import AzureChatOpenAI
+# Logging centralizado
+from src.utils.logging_config import get_logger
+logger = get_logger(__name__)
+
+# LangChain
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.agents import AgentExecutor, create_openai_functions_agent
 from langchain.tools import BaseTool
-from langchain.memory import ConversationBufferMemory
+from langchain.memory import ConversationBufferWindowMemory
 
 # Importar configuración unificada de LLMs
 try:
@@ -29,10 +32,9 @@ except ImportError:
         LLM_CONFIG_AVAILABLE = True
     except ImportError:
         LLM_CONFIG_AVAILABLE = False
-        print("⚠️ Configuración unificada de LLM no disponible - usando modo simulado")
+        logger.warning("Configuración unificada de LLM no disponible - usando modo simulado")
 
-# Cargar las variables de entorno desde el archivo .env
-# Esto asegura que estén disponibles tan pronto como se importe este módulo.
+# Cargar variables de entorno
 load_dotenv()
 
 class BaseAgentConfig(BaseModel):
@@ -58,6 +60,12 @@ class BaseLLMAgent(ABC):
         self.tools = tools or []
         self.name = config.name
         self.description = config.description
+
+        # Límite de memoria de chat (últimos K mensajes)
+        try:
+            self._memory_k = int(os.getenv("MEMORY_K", "8"))
+        except Exception:
+            self._memory_k = 8
         
         # Usar configuración unificada de LLMs
         if LLM_CONFIG_AVAILABLE:
@@ -68,17 +76,17 @@ class BaseLLMAgent(ABC):
                 )
                 self._llm_available = True
                 provider = unified_llm_config.active_provider
-                print(f"✅ Agente '{self.name}' inicializado con {provider}")
+                logger.info("Agente '%s' inicializado con proveedor LLM: %s", self.name, provider)
             except Exception as e:
-                print(f"⚠️ Error al conectar LLM para agente '{self.name}': {e}")
+                logger.warning("Error al conectar LLM para agente '%s': %s", self.name, e)
                 self._llm_available = False
                 self.llm = None
         else:
             self._llm_available = False
             self.llm = None
-            print(f"⚠️ Agente '{self.name}' en modo simulado - LLM no disponible")
+            logger.warning("Agente '%s' en modo simulado - LLM no disponible", self.name)
         
-        # Configurar prompts y agentes solo si tenemos LLM disponible
+        # Configurar prompts y agentes solo si hay LLM
         if self.llm and self.config.system_prompt:
             if self.tools:
                 # Prompt completo para agentes con herramientas
@@ -89,7 +97,7 @@ class BaseLLMAgent(ABC):
                     MessagesPlaceholder(variable_name="agent_scratchpad", optional=True),
                 ])
                 self.agent = create_openai_functions_agent(llm=self.llm, tools=self.tools, prompt=self.prompt)
-                self.agent_executor = AgentExecutor(agent=self.agent, tools=self.tools, verbose=True)
+                self.agent_executor = AgentExecutor(agent=self.agent, tools=self.tools, verbose=False)
             else:
                 # Prompt simple para agentes sin herramientas
                 self.prompt = ChatPromptTemplate.from_messages([
@@ -97,7 +105,6 @@ class BaseLLMAgent(ABC):
                     MessagesPlaceholder(variable_name="chat_history", optional=True),
                     ("human", "{input}"),
                 ])
-                # Si no hay herramientas, creamos una cadena simple de LLM
                 self.agent_executor = self.prompt | self.llm
         else:
             # Modo simulado - sin agente real
@@ -105,9 +112,13 @@ class BaseLLMAgent(ABC):
             self.agent = None
             self.agent_executor = None
         
-        # Memoria para conversación
-        self.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-        print(f"✅ Agente '{self.name}' inicializado correctamente.")
+        # Memoria: mantener solo los últimos K mensajes para evitar crecimiento
+        self.memory = ConversationBufferWindowMemory(
+            memory_key="chat_history",
+            return_messages=True,
+            k=self._memory_k
+        )
+        logger.info("Agente '%s' inicializado correctamente.", self.name)
 
     def _extract_content(self, llm_response):
         """Extrae el contenido de la respuesta del LLM, maneja tanto strings como objetos"""
@@ -154,7 +165,7 @@ class BaseLLMAgent(ABC):
         provider = unified_llm_config.active_provider if LLM_CONFIG_AVAILABLE else "none"
         return {
             "success": True,
-            "result": f"🤖 **{self.name} (Modo Simulado)**\n\nHe recibido tu solicitud: *\"{input_text[:100]}...\"*\n\n📋 **Procesamiento simulado:**\n• Análisis completado\n• Datos procesados correctamente\n• Resultados generados\n\n*Nota: Proveedor activo: {provider}. Para funcionalidad completa, configura un LLM correctamente.*",
+            "result": f"🤖 **{self.name} (Modo Simulado)**\n\nHe recibido tu solicitud: *\"{(input_text or '')[:100]}...\"*\n\n📋 **Procesamiento simulado:**\n• Análisis completado\n• Datos procesados correctamente\n• Resultados generados\n\n*Nota: Proveedor activo: {provider}. Para funcionalidad completa, configura un LLM correctamente.*",
             "metadata": {
                 "agent": self.name,
                 "mode": "simulated",
@@ -178,25 +189,16 @@ class BaseLLMAgent(ABC):
             else:
                 return self._generate_mock_response(input_text, context)
         except Exception as e:
-            print(f"⚠️ Error en agente '{self.name}': {e}")
+            logger.warning("Error en agente '%s': %s", self.name, e)
             return self._generate_mock_response(input_text, context)
     
     def _extract_response_text(self, llm_response) -> str:
         """
         Extrae el texto de una respuesta LLM manejando diferentes formatos.
-        
-        Args:
-            llm_response: Respuesta del LLM (puede ser objeto con .content o string directo)
-            
-        Returns:
-            str: Texto extraído de la respuesta
         """
         if hasattr(llm_response, 'content'):
-            # Respuesta de AgentExecutor con herramientas
             return llm_response.content
         elif isinstance(llm_response, str):
-            # Respuesta directa de LLM simple
             return llm_response
         else:
-            # Otros tipos de respuesta
             return str(llm_response)

@@ -1,166 +1,229 @@
-## Descripción
+# PatientIA: Sistema de Aumento de Datos Médicos con Agentes IA
 
-**Patientia** es una herramienta avanzada para la generación de datos sintéticos en el ámbito de la salud, especialmente diseñada para crear historias clínicas artificiales que mantienen las características estadísticas y clínicas de los datos reales sin comprometer la privacidad de los pacientes.
+PatientIA es un sistema avanzado que utiliza un flujo de trabajo basado en agentes de IA para analizar, generar, validar y simular datos de pacientes, con el objetivo de aumentar datasets médicos para investigación y entrenamiento de modelos.
 
-Este proyecto utiliza técnicas de inteligencia artificial, incluyendo modelos generativos (SDV, CTGAN) y LLMs, para producir datos clínicos sintéticos de alta calidad que pueden utilizarse para investigación, formación médica, y desarrollo de soluciones tecnológicas en salud.
+## 📋 Arquitectura y Flujo de Trabajo
 
-## Características Principales
+El núcleo del sistema es un grafo de agentes orquestado por LangGraph. Cada agente es un especialista en una tarea concreta, permitiendo un flujo de trabajo modular y robusto.
 
-- 🧬 **Generación Sintética Tabular**: Creación de datasets estructurados que preservan correlaciones y distribuciones estadísticas.
-- 🔍 **Análisis Exploratorio**: Herramientas para comprender y visualizar patrones en datos clínicos.
-- 🤖 **Agentes de IA Especializados**: Sistema multi-agente para análisis, generación, validación y evaluación.
-- 📊 **Interfaz Interactiva**: Dashboard web para interactuar con los datos y generar nuevos registros.
-- ✅ **Validación Clínica**: Verificación automática de la coherencia médica de los datos generados.
-- 📈 **Evaluación de Calidad**: Métricas para valorar la utilidad y el realismo de los datos sintéticos.
+### Diagrama del Flujo de Agentes
 
-## Requisitos
+```mermaid
+graph TD
+    A[Coordinator] --> B(Analyzer);
+    A --> C(Generator);
+    A --> D(Validator);
+    A --> E(Evaluator);
+    A --> F(Simulator);
 
-- **Python**: 3.11 o superior
-- **Sistema Operativo**: Compatible con Windows, macOS y Linux
-- **Memoria**: Mínimo 8GB RAM (16GB+ recomendado)
-- **Espacio en disco**: 2GB para instalación completa
-- **API Key**: Cuenta en Azure OpenAI (opcional para funcionalidades LLM)
+    B --> C;
+    B --> F;
+    B --> A;
 
-## Instalación
+    C --> D;
+    C --> E;
+    C --> B;
+    C --> A;
 
-### Opción 1: Usando Pipenv (recomendado)
+    D --> E;
+    D --> F;
+    D --> C;
+    D --> A;
 
-```bash
-# Clonar el repositorio
-git clone https://github.com/username/R35_sopra_steria.git
-cd R35_sopra_steria
+    E --> F;
+    E --> C;
+    E --> B;
+    E --> A;
 
-# Instalar dependencias con Pipenv
-pipenv install
+    F --> A;
+    F --> E;
 
-# Activar el entorno virtual
-pipenv shell
+    subgraph "Flujo Principal"
+        direction LR
+        B --> C --> D --> E;
+    end
+
+    style A fill:#FF6B6B,stroke:#333,stroke-width:2px
+    style B fill:#4ECDC4,stroke:#333,stroke-width:2px
+    style C fill:#45B7D1,stroke:#333,stroke-width:2px
+    style D fill:#96CEB4,stroke:#333,stroke-width:2px
+    style E fill:#FFEAA7,stroke:#333,stroke-width:2px
+    style F fill:#DDA0DD,stroke:#333,stroke-width:2px
 ```
 
-### Opción 2: Usando pip
-
-```bash
-# Clonar el repositorio
-git clone https://github.com/username/R35_sopra_steria.git
-cd R35_sopra_steria
-
-# Crear un entorno virtual
-python -m venv venv
-# En Windows
-venv\Scripts\activate
-# En macOS/Linux
-source venv/bin/activate
-
-# Instalar dependencias
-pip install -r requirements.txt
-```
-
-### Configuración de Variables de Entorno
-
-Para funcionalidades avanzadas que utilizan LLMs, crea un archivo `.env` en la raíz del proyecto con el siguiente contenido:
-
-```
-# Azure OpenAI
-AZURE_OPENAI_API_KEY="your_api_key_here"
-AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
-AZURE_OPENAI_DEPLOYMENT="your_deployment_name"
-AZURE_OPENAI_API_VERSION="2024-02-01"
-```
-
-## Uso
-
-### 1. Interfaz de Chat para Datos Sintéticos
-
-Para iniciar la aplicación, ejecuta la interfaz de Streamlit:
-
-```bash
-streamlit run interfaces/chat_llm.py
-```
-
-Este comando abrirá una aplicación web donde podrás:
-- Cargar archivos de datos reales.
-- Analizar las características clínicas.
-- Generar datos sintéticos.
-- Validar la calidad médica de los datos.
-- Descargar los resultados.
-
-### 2. Análisis de Datos (Jupyter Notebooks)
-
-Para explorar los notebooks de análisis y modelado:
-
-```bash
-# Iniciar Jupyter Lab o Jupyter Notebook
-jupyter lab
-# o
-jupyter notebook
-```
-
-Una vez iniciado, navega a la carpeta `notebooks/` para explorar los análisis existentes, como:
-- `EDA.ipynb`: Análisis exploratorio de datos.
-- `umap_hdbscan_faiss.ipynb`: Reducción de dimensionalidad y clustering.
-- `FAISS.ipynb`: Búsqueda de similitud en datos clínicos.
-
-## Estructura del Proyecto
-
-```
-R35_sopra_steria/
-├── data/
-│   ├── real/                   # Datasets originales procesados
-│   └── synthetic/              # Cohortes sintéticas generadas
-├── docs/                       # Documentación del proyecto
-├── interfaces/                 # Interfaces de usuario (Streamlit, CLI)
-├── models/                     # Modelos generativos entrenados (checkpoints)
-├── notebooks/                  # Notebooks para análisis y experimentación
-├── outputs/                    # Salidas generadas (historias clínicas, informes)
-├── src/
-│   ├── agents/                 # Sistema multi-agente (analizador, generador, etc.)
-│   ├── config/                 # Configuración de Azure y otros servicios
-│   ├── evaluation/             # Módulos para evaluar la calidad de los datos
-│   ├── extraction/             # Extracción de patrones y características
-│   ├── generation/             # Módulos de generación (SDV, CTGAN, TVAE)
-│   ├── narration/              # Generación de texto narrativo con LLMs
-│   ├── orchestration/          # Orquestación del flujo de trabajo con LangGraph
-│   ├── simulation/             # Simulación de la progresión de pacientes
-
-│   ├── utils/                  # Funciones y herramientas auxiliares
-│   └── validation/             # Reglas de validación clínica y de esquema
-├── tests/                      # Pruebas unitarias y de integración
-├── .gitignore                  # Archivos y carpetas ignorados por Git
-├── Pipfile                     # Dependencias del proyecto para Pipenv
-├── requirements.txt            # Lista de dependencias para pip
-└── README.md                   # Este archivo
-```
-
-## Componentes Principales
-
-### Módulo de Generación (`src/generation`)
-El núcleo del sistema utiliza modelos generativos como **SDV (Synthetic Data Vault)**, **CTGAN (Conditional Tabular GAN)** y **TVAE (Tabular VAE)** para producir datos sintéticos de alta fidelidad.
-
-### Sistema Multi-Agente (`src/agents`)
-La arquitectura se basa en agentes especializados con responsabilidades claras:
-- **Coordinador**: Orquesta el flujo de trabajo global.
-- **Analizador**: Extrae patrones de los datos originales.
-- **Generador**: Crea los datos sintéticos.
-- **Validador**: Verifica la coherencia clínica y estructural.
-- **Simulador**: Modela la evolución temporal de los pacientes.
-- **Evaluador**: Mide la calidad de los datos generados.
-
-### Interfaz de Usuario (`interfaces/`)
-Utilizamos **Streamlit** para crear una interfaz web intuitiva que permite a los usuarios interactuar con el sistema, generar datos y visualizar resultados sin necesidad de conocimientos técnicos avanzados.
-
-## Soporte y Mantenimiento
-
-- **Problemas y sugerencias**: Abrir un *issue* en el repositorio de GitHub.
-- **Documentación**: Consultar la carpeta `docs/` para guías detalladas.
-
-## Licencia
-
-Este proyecto está licenciado bajo los términos especificados en el archivo `LICENSE`.
-
-## Agradecimientos
-
-Este proyecto fue desarrollado como parte de un Trabajo Fin de Máster (TFM) en colaboración con Sopra Steria. Agradecemos a todos los colaboradores y mentores que han hecho posible este desarrollo.
+### Descripción de los Agentes
+- **Coordinator:** Punto de entrada. Dirige la tarea inicial al agente apropiado.
+- **Analyzer:** Realiza un análisis exploratorio de los datos médicos.
+- **Generator:** Genera datos sintéticos utilizando modelos como CTGAN o TVAE.
+- **Validator:** Aplica reglas clínicas y esquemas para asegurar la coherencia de los datos.
+- **Evaluator:** Mide la calidad y realismo de los datos generados.
+- **Simulator:** Simula la evolución temporal de las condiciones del paciente.
 
 ---
 
-&copy; 2024 Patientia - Generador de Historias Clínicas Sintéticas
+## 🚀 Guía de Uso y Comandos
+
+Este proyecto utiliza `uv` para la gestión de entornos virtuales y dependencias.
+
+### Comandos de `uv`
+
+- **Crear el entorno virtual (si no existe):**
+  ```shell
+  uv venv
+  ```
+
+- **Activar el entorno:**
+  - En Windows (CMD): `\.venv\Scripts\activate`
+  - En Windows (PowerShell): `\.venv\Scripts\Activate.ps1`
+  - En Linux/macOS: `source .venv/bin/activate`
+
+- **Instalar dependencias:**
+  ```shell
+  uv pip install -r requirements-api.txt
+  uv pip install -r requirements-client.txt
+  ```
+
+- **Sincronizar dependencias (instala/desinstala para que coincida con el `requirements.txt`):**
+  ```shell
+  uv pip sync requirements-api.txt
+  ```
+
+- **Añadir una nueva dependencia:**
+  ```shell
+  uv pip install <nombre_paquete>
+  ```
+
+- **Generar `requirements.txt`:**
+  ```shell
+  uv pip freeze > requirements.txt
+  ```
+
+### Lanzar la Aplicación
+
+La aplicación consta de dos componentes principales: la API (backend) y el cliente de Streamlit (frontend).
+
+- **Paso 1: Ejecutar la API (backend)**
+  En una terminal, ejecuta el siguiente comando para iniciar el servidor de la API:
+  ```shell
+  python run_api.py
+  ```
+  La API estará disponible en `http://127.0.0.1:8000`. Puedes explorar la documentación interactiva de la API en `http://127.0.0.1:8000/docs`.
+
+- **Paso 2: Ejecutar el Cliente de Streamlit (frontend)**
+  En otra terminal, ejecuta el siguiente comando para iniciar la interfaz de usuario:
+  ```shell
+  python launch_client.py
+  ```
+  Esto abrirá una nueva pestaña en tu navegador con la aplicación de Streamlit.
+
+---
+
+## 📚 API Endpoints
+
+La API de PatientIA proporciona los siguientes endpoints para interactuar con el sistema:
+
+### Health
+
+- **`GET /api/v1/health`**: Verifica el estado de la API.
+- **`GET /api/v1/health/llm`**: Verifica el estado del LLM.
+
+### Chat
+
+- **`POST /api/v1/chat`**: Maneja las interacciones de chat con el sistema.
+
+### Datasets
+
+- **`POST /api/v1/datasets/upload`**: Sube un nuevo dataset.
+- **`GET /api/v1/datasets`**: Lista los datasets disponibles.
+- **`GET /api/v1/datasets/{dataset_id}`**: Obtiene un dataset específico.
+- **`DELETE /api/v1/datasets/{dataset_id}`**: Elimina un dataset específico.
+
+### Analysis
+
+- **`POST /api/v1/analysis`**: Realiza un análisis sobre un dataset.
+
+### Generation
+
+- **`POST /api/v1/generation`**: Genera datos sintéticos.
+
+### Validation
+
+- **`POST /api/v1/validation`**: Valida un dataset.
+
+### Evaluation
+
+- **`POST /api/v1/evaluation`**: Evalúa la calidad de un dataset.
+
+### Simulation
+
+- **`POST /api/v1/simulation`**: Simula datos.
+
+---
+
+## 📚 Documentación
+
+El proyecto cuenta con documentación exhaustiva organizada por categorías:
+
+### Documentación Principal
+- **[INDICE_DOCUMENTACION.md](./INDICE_DOCUMENTACION.md)** - Índice maestro de toda la documentación
+- **[ARQUITECTURA_AGENTES_DETALLADA.md](./ARQUITECTURA_AGENTES_DETALLADA.md)** - Arquitectura del sistema multi-agente
+- **[GUIA_DEPURACION_OPTIMIZACION.md](./GUIA_DEPURACION_OPTIMIZACION.md)** - Guía de debugging y optimización
+
+### Documentación de Optimización
+- **[docs/phases/](./docs/phases/)** - Documentación de fases de optimización
+  - Fase 1: Coordinador (✅ Completada - 2000x speedup)
+  - Fase 2: Analizador (✅ Completada - 243x speedup, análisis EDA completo)
+  - Ver [README de fases](./docs/phases/README.md) para más detalles
+
+### Tests
+- **[tests/](./tests/)** - Suite completa de tests automatizados
+  - Tests de optimización por fase
+  - Tests de integración
+  - Scripts de debugging
+  - Ver [README de tests](./tests/README.md) para más detalles
+
+## 🚀 Estado del Proyecto
+
+### Fases Completadas
+- ✅ **Fase 1**: Optimización del Coordinador (2000x speedup para respuestas comunes)
+- ✅ **Fase 2**: Optimización del Analizador (243x speedup para análisis cacheados + análisis EDA completo)
+
+### Próximas Fases
+- 📋 **Fase 3**: Optimización del Generador (caché de modelos, early stopping)
+- 📋 **Fase 4-6**: Optimización de Validador, Evaluador y Simulador
+
+Ver [PLAN_MEJORAS_INCREMENTALES.md](./PLAN_MEJORAS_INCREMENTALES.md) para el roadmap completo.
+
+---
+
+## 🛠️ Estado del Sistema y Bitácora
+
+### Estado Actual del Sistema
+
+- **API:** Operativa. Expone los endpoints para interactuar con el flujo de agentes.
+- **Flujo de Agentes:** Implementado con LangGraph. El grafo principal es funcional.
+- **Modelos de Generación:** Integrados (CTGAN, SDV, TVAE).
+- **Validación:** Módulos de validación por reglas clínicas y esquema JSON implementados.
+- **Cliente:** Cliente de prueba basado en Streamlit disponible para demostraciones.
+
+### Bitácora de Desarrollo
+
+- **Fase 1: Diseño y prototipado.**
+  - Se diseñó la arquitectura de agentes.
+  - Se crearon los agentes base y se definió el `WorkflowState`.
+  - Se implementó un orquestador simple.
+- **Fase 2: Implementación del grafo.**
+  - Migración a LangGraph para una orquestación más robusta.
+  - Se implementaron las transiciones condicionales entre agentes.
+  - Se crearon los routers de la API para cada funcionalidad principal.
+- **Fase 3: Pruebas y Refinamiento.**
+  - Se realizaron pruebas de integración entre los agentes.
+  - Se depuraron los modelos de generación de datos.
+  - Se creó el cliente de Streamlit para facilitar la visualización y prueba del flujo completo.
+- **Fase 4: Limpieza y Consolidación (Actual).**
+  - Unificación de la documentación.
+  - Planificación de la limpieza de código obsoleto.
+  - Definición de la arquitectura final y preparación para la entrega al equipo de frontend.
+
+---
+*Este README fue generado y unificado automáticamente por Gemini.*

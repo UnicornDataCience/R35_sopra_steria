@@ -1,0 +1,179 @@
+# Reglas de validación clínica configurables
+# Actualizado: 16 de Octubre, 2025
+
+# ==============================
+# COVID-19 Dataset Rules
+# ==============================
+covid19:
+  dataset_type: "COVID-19"
+  
+  # Reglas de rangos numéricos
+  numeric_rules:
+    - name: "Temperatura válida"
+      fields: ["Temperature", "Temperatura", "temp"]
+      min: 35.0
+      max: 42.0
+      severity: "critical"
+      message: "Temperatura fuera del rango fisiológico (35-42°C)"
+    
+    - name: "Saturación de oxígeno válida"
+      fields: ["SpO2", "Oxygen_Saturation", "Saturacion_Oxigeno", "sat", "oxygen"]
+      min: 70
+      max: 100
+      severity: "critical"
+      message: "Saturación de oxígeno fuera del rango posible (70-100%)"
+    
+    - name: "Frecuencia cardíaca válida"
+      fields: ["Heart_Rate", "Frecuencia_Cardiaca", "pulse"]
+      min: 40
+      max: 200
+      severity: "warning"
+      message: "Frecuencia cardíaca fuera del rango típico (40-200 bpm)"
+    
+    - name: "Presión arterial sistólica"
+      fields: ["Systolic_BP", "Presion_Sistolica"]
+      min: 70
+      max: 250
+      severity: "warning"
+      message: "Presión sistólica fuera del rango típico (70-250 mmHg)"
+    
+    - name: "Presión arterial diastólica"
+      fields: ["Diastolic_BP", "Presion_Diastolica"]
+      min: 40
+      max: 150
+      severity: "warning"
+      message: "Presión diastólica fuera del rango típico (40-150 mmHg)"
+  
+  # Reglas categóricas
+  categorical_rules:
+    - name: "Resultado PCR válido"
+      fields: ["PCR_Result", "Resultado_PCR"]
+      allowed_values: ["Positive", "Negative", "Positivo", "Negativo"]
+      severity: "critical"
+      message: "Resultado PCR debe ser Positivo o Negativo"
+    
+    - name: "Severidad válida"
+      fields: ["Severity", "Severidad"]
+      allowed_values: ["Low", "Medium", "High", "Critical", "Bajo", "Medio", "Alto", "Crítico"]
+      severity: "critical"
+      message: "Severidad debe ser Low/Medium/High/Critical"
+  
+  # Reglas de correlación (lógica condicional)
+  correlation_rules:
+    - name: "SpO2-Severidad Crítica"
+      condition: "if Severity == 'Critical' then SpO2 < 90"
+      severity: "warning"
+      message: "Severidad crítica generalmente implica SpO2 < 90%"
+    
+    - name: "Temperatura-Severidad Baja"
+      condition: "if Severity == 'Low' then Temperature <= 38.0"
+      severity: "info"
+      message: "Severidad baja generalmente tiene temperatura <= 38°C"
+
+# ==============================
+# Diabetes Dataset Rules
+# ==============================
+diabetes:
+  dataset_type: "Diabetes"
+  
+  numeric_rules:
+    - name: "Glucosa válida"
+      fields: ["Glucose", "Glucosa", "Blood_Glucose"]
+      min: 40
+      max: 600
+      severity: "critical"
+      message: "Nivel de glucosa fuera del rango posible (40-600 mg/dL)"
+    
+    - name: "Presión arterial válida"
+      fields: ["Blood_Pressure", "Presion_Arterial"]
+      min: 50
+      max: 200
+      severity: "warning"
+      message: "Presión arterial fuera del rango típico (50-200 mmHg)"
+    
+    - name: "IMC válido"
+      fields: ["BMI", "IMC", "Body_Mass_Index"]
+      min: 10
+      max: 60
+      severity: "warning"
+      message: "IMC fuera del rango típico (10-60)"
+    
+    - name: "HbA1c válida"
+      fields: ["HbA1c", "Hemoglobina_Glicosilada"]
+      min: 3.0
+      max: 15.0
+      severity: "critical"
+      message: "HbA1c fuera del rango posible (3-15%)"
+  
+  categorical_rules:
+    - name: "Diagnóstico de diabetes"
+      fields: ["Outcome", "Diabetes", "Diagnostic"]
+      allowed_values: [0, 1, "Yes", "No", "Sí", "No"]
+      severity: "critical"
+      message: "Diagnóstico debe ser 0/1 o Yes/No"
+
+# ==============================
+# Cardiology Dataset Rules
+# ==============================
+cardiology:
+  dataset_type: "Cardiology"
+  
+  numeric_rules:
+    - name: "Edad válida"
+      fields: ["Age", "Edad"]
+      min: 18
+      max: 120
+      severity: "critical"
+      message: "Edad fuera del rango válido para cardiología (18-120 años)"
+    
+    - name: "Colesterol válido"
+      fields: ["Cholesterol", "Colesterol"]
+      min: 100
+      max: 600
+      severity: "warning"
+      message: "Colesterol fuera del rango típico (100-600 mg/dL)"
+    
+    - name: "Frecuencia cardíaca máxima"
+      fields: ["Max_Heart_Rate", "FC_Maxima"]
+      min: 60
+      max: 220
+      severity: "warning"
+      message: "Frecuencia cardíaca máxima fuera del rango típico (60-220 bpm)"
+
+# ==============================
+# Generic Dataset Rules (Default)
+# ==============================
+generic:
+  dataset_type: "Generic"
+  
+  numeric_rules:
+    - name: "Edad válida"
+      fields: ["Age", "Edad", "age"]
+      min: 0
+      max: 120
+      severity: "critical"
+      message: "Edad fuera del rango válido (0-120 años)"
+  
+  # Sin reglas categóricas o de correlación específicas
+  categorical_rules: []
+  correlation_rules: []
+
+# ==============================
+# Configuración General
+# ==============================
+validation_config:
+  # Thresholds de calidad
+  thresholds:
+    overall_score_min: 0.70  # Score mínimo aceptable
+    clinical_coherence_min: 0.80
+    data_quality_min: 0.80
+  
+  # Severidades
+  severity_levels:
+    critical: 1.0  # Peso máximo
+    warning: 0.5   # Peso medio
+    info: 0.2      # Peso bajo
+  
+  # Performance
+  parallel_threshold: 10000  # Activar paralelización si dataset > 10k filas
+  num_workers: 4             # Workers para validación paralela

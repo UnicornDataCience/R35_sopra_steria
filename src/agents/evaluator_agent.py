@@ -1,7 +1,13 @@
 from typing import Dict, Any
 import pandas as pd
 import numpy as np
+import time
+from src.utils.logging_config import get_logger
 from .base_agent import BaseLLMAgent, BaseAgentConfig
+from src.evaluation.evaluation_cache import get_evaluation_cache
+from src.evaluation.evaluation_metrics import get_evaluator_tracker, EvaluationMetrics
+
+logger = get_logger(__name__)
 
 try:
     from src.evaluation.evaluator import evaluate_ml_performance, evaluate_medical_entities
@@ -16,7 +22,8 @@ class UtilityEvaluatorAgent(BaseLLMAgent):
         config = BaseAgentConfig(
             name="Evaluador de Utilidad",
             description="Especialista en evaluación de calidad, fidelidad y utilidad de datos sintéticos para investigación",
-            system_prompt="""Eres un agente experto en evaluación de utilidad de datos sintéticos. Recibes un resumen de evaluación y tu tarea es interpretarlo y presentar un informe claro y conciso en Markdown, certificando la calidad de los datos."""
+            system_prompt="""Eres un agente experto en evaluación de utilidad de datos sintéticos. Recibes un resumen de evaluación y tu tarea es interpretarlo y presentar un informe claro y conciso en Markdown, certificando la calidad de los datos.""",
+            max_tokens=4000  # 🔥 Aumentar tokens para informes largos y completos
         )
         super().__init__(config, tools=[])  # Explícitamente sin herramientas
 
@@ -30,18 +37,74 @@ class UtilityEvaluatorAgent(BaseLLMAgent):
             return {"message": "Error: Se necesitan datos originales y sintéticos para la evaluación.", "agent": self.name, "error": True}
 
         try:
-            is_covid = context.get('universal_analysis', {}).get('dataset_type') == 'COVID-19'
-            eval_results = self._perform_comprehensive_evaluation(original_data, synthetic_data, is_covid)
+            start_time = time.time()
+            
+            # Intentar recuperar del caché
+            cache = get_evaluation_cache()
+            cached_results = cache.get(original_data, synthetic_data)
+            
+            if cached_results is not None:
+                # Cache HIT
+                eval_results = cached_results
+                cache_hit = True
+                logger.info(f"✅ Evaluation cache HIT ({original_data.shape[0]}x{synthetic_data.shape[0]} rows)")
+            else:
+                # Cache MISS - Realizar evaluación
+                cache_hit = False
+                logger.info(f"🔍 Evaluating synthetic data ({original_data.shape} orig vs {synthetic_data.shape} synt)")
+                is_covid = context.get('universal_analysis', {}).get('dataset_type') == 'COVID-19'
+                eval_results = self._perform_comprehensive_evaluation(original_data, synthetic_data, is_covid)
+                
+                # Guardar en caché
+                cache.put(original_data, synthetic_data, eval_results)
+            
+            # Métricas de performance
+            elapsed_ms = (time.time() - start_time) * 1000
+            
+            # Registrar métricas
+            metrics = EvaluationMetrics(
+                original_rows=len(original_data),
+                original_cols=len(original_data.columns),
+                synthetic_rows=len(synthetic_data),
+                synthetic_cols=len(synthetic_data.columns),
+                final_quality_score=eval_results.get('final_quality_score', 0),
+                fidelity_score=eval_results.get('overall_fidelity', 0),
+                ml_utility_score=eval_results.get('ml_utility', 0),
+                privacy_score=eval_results.get('privacy_score', 0),
+                quality_tier=eval_results.get('quality_tier', 'N/A'),
+                correlation_preservation=eval_results.get('correlation_preservation', 0),
+                distribution_similarity=eval_results.get('distribution_similarity', 0),
+                unique_value_coverage=eval_results.get('unique_value_coverage', 0),
+                f1_preservation=eval_results.get('f1_preservation', 0),
+                total_time_ms=elapsed_ms,
+                cache_hit=cache_hit
+            )
+            
+            tracker = get_evaluator_tracker()
+            tracker.record(metrics)
+            
+            logger.info(f"⏱️ Evaluation completed in {elapsed_ms:.2f}ms (cache_hit={cache_hit})")
+            logger.info(f"📊 Quality: {eval_results.get('final_quality_score', 0):.1%} ({eval_results.get('quality_tier', 'N/A')})")
 
             prompt = self._create_llm_prompt(eval_results)
             informe_markdown = await self.agent_executor.ainvoke({"input": prompt, "chat_history": self.memory.chat_memory.messages})
 
+            # Log del contenido generado
+            content = informe_markdown.content if hasattr(informe_markdown, 'content') else str(informe_markdown)
+            logger.info("📄 Informe generado - Longitud: %d caracteres", len(content))
+            logger.debug("📄 Primeros 500 chars: %s...", content[:500])
+
             return {
-                "message": informe_markdown.content,
+                "message": content,
                 "agent": self.name,
-                "evaluation_results": eval_results
+                "evaluation_results": eval_results,
+                "performance": {
+                    "evaluation_time_ms": elapsed_ms,
+                    "cache_hit": cache_hit
+                }
             }
         except Exception as e:
+            logger.error("Error durante la evaluación: %s", e)
             return {"message": f"Error durante la evaluación: {e}", "agent": self.name, "error": True}
 
     def _create_llm_prompt(self, results: Dict[str, Any]) -> str:
@@ -165,8 +228,7 @@ El informe debe ser comprehensivo pero conciso, enfocándose en la utilidad prá
             return results
             
         except Exception as e:
-            print(f"❌ Error en evaluación completa: {e}")
-            # Datos mock en caso de error
+            logger.error("Error en evaluación completa: %s", e)
             score = np.random.uniform(0.70, 0.85)
             return {
                 'final_quality_score': score,
@@ -241,7 +303,7 @@ El informe debe ser comprehensivo pero conciso, enfocándose en la utilidad prá
             return results
             
         except Exception as e:
-            print(f"⚠️ Error en evaluación estadística: {e}")
+            logger.warning("Error en evaluación estadística: %s", e)
             return {
                 'correlation_preservation': 0.75,
                 'distribution_similarity': 0.70,
@@ -271,7 +333,7 @@ El informe debe ser comprehensivo pero conciso, enfocándose en la utilidad prá
             return max(0.85, privacy_score)  # Mínimo 85% de privacidad
             
         except Exception as e:
-            print(f"⚠️ Error calculando privacidad: {e}")
+            logger.warning("Error calculando privacidad: %s", e)
             return 0.90  # Score conservador
     
     def _calculate_final_quality_score(self, results: Dict[str, Any]) -> float:
@@ -307,7 +369,7 @@ El informe debe ser comprehensivo pero conciso, enfocándose en la utilidad prá
             return min(1.0, max(0.0, final_score))
             
         except Exception as e:
-            print(f"⚠️ Error calculando score final: {e}")
+            logger.warning("Error calculando score final: %s", e)
             return 0.75
     
     def _classify_quality(self, score: float) -> tuple:

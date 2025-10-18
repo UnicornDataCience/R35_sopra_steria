@@ -3,12 +3,16 @@ import numpy as np
 from typing import Dict, List, Any
 import logging
 import re
+import os
+from src.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 class DataAnalyzer:
     """Extractor de patrones clínicos de datasets médicos"""
     
     def __init__(self):
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger
         
         # Columnas mínimas requeridas para cualquier dataset médico
         self.required_columns = {
@@ -45,11 +49,11 @@ class DataAnalyzer:
     def extract_patterns(self, df: pd.DataFrame) -> Dict:
         """Extrae patrones automáticamente CON PROTECCIÓN CONTRA ERRORES"""
         
-        print(f"Analizando dataset: {len(df)} filas, {len(df.columns)} columnas")
+        logger.info("Analizando dataset: %s filas, %s columnas", len(df), len(df.columns))
         
         # VERIFICAR DATASET VÁLIDO
         if df.empty or len(df) == 0:
-            print("Dataset vacio, devolviendo analisis basico")
+            logger.warning("Dataset vacío, devolviendo análisis básico")
             return self._create_empty_analysis_result(df)
         
         # VERIFICAR COLUMNAS DUPLICADAS ANTES DE PROCESAR
@@ -57,9 +61,9 @@ class DataAnalyzer:
         unique_columns = list(dict.fromkeys(original_columns))
         
         if len(original_columns) != len(unique_columns):
-            print(f"⚠️ Detectadas {len(original_columns) - len(unique_columns)} columnas duplicadas")
+            logger.warning("Detectadas %s columnas duplicadas", len(original_columns) - len(unique_columns))
             df = df.loc[:, ~df.columns.duplicated()]
-            print(f" Dataset limpiado: {len(df.columns)} columnas unicas")
+            logger.info("Dataset limpiado: %s columnas únicas", len(df.columns))
         
         try:
             # 1. DETECTAR CONTEXTO MÉDICO (con protección)
@@ -76,21 +80,21 @@ class DataAnalyzer:
                 'temporal_patterns': patterns_result.get('temporal_patterns', {}),
                 'quality_metrics': patterns_result.get('quality_metrics', {
                     'completeness': 1.0,
-                    'total_records': len(patterns_result.get('cleaned_dataframe', df)), # Usar el df del patterns_result
-                    'total_fields': len(patterns_result.get('cleaned_dataframe', df).columns) # Usar el df del patterns_result
+                    'total_records': len(patterns_result.get('cleaned_dataframe', df)),
+                    'total_fields': len(patterns_result.get('cleaned_dataframe', df).columns)
                 }),
                 'clinical_patterns': patterns_result.get('clinical_patterns', {}),
                 'standardized_schema': patterns_result.get('standardized_schema', {}),
                 'recommendations': patterns_result.get('recommendations', ["Análisis completado"]),
-                'cleaned_dataframe': patterns_result.get('cleaned_dataframe', df), # AQUI ESTA EL CAMBIO CLAVE
+                'cleaned_dataframe': patterns_result.get('cleaned_dataframe', df),
                 'is_covid_dataset': context_detection.get('is_covid_dataset', False),
-                'statistics': patterns_result.get('statistics', {}),  # Asegurar clave 'statistics'
-                'analysis_type': context_detection.get('primary_context', 'general'),  # Garantizar 'analysis_type'
-                'filtered_file_path': patterns_result.get('filtered_file_path') # Propagar la ruta del archivo
+                'statistics': patterns_result.get('statistics', {}),
+                'analysis_type': context_detection.get('primary_context', 'general'),
+                'filtered_file_path': patterns_result.get('filtered_file_path')
             }
         
         except Exception as e:
-            print(f"Error en extract_patterns: {e}")
+            logger.error("Error en extract_patterns: %s", e)
             return self._create_fallback_analysis_result(df, str(e))
     
     def _detect_medical_context(self, df: pd.DataFrame) -> Dict:
@@ -115,13 +119,13 @@ class DataAnalyzer:
                 try:
                     for col in df.select_dtypes(include=['object']).columns:
                         if df[col].dtype == 'object':
-                            col_text = ' '.join(df[col].astype(str).str.upper().unique()[:100])  # Limitar para performance
+                            col_text = ' '.join(df[col].astype(str).str.upper().unique()[:100])
                             for keyword in context_config['keywords']:
                                 if keyword in col_text:
                                     score += 1
                                     features.append(f"Contenido relacionado con {keyword}")
                 except Exception:
-                    pass  # Ignorar errores de contenido
+                    pass
                 
                 context_scores[context_name] = {
                     'score': score,
@@ -129,30 +133,23 @@ class DataAnalyzer:
                     'specialty': context_config['specialty']
                 }
             
-            # Determinar contexto principal
             if not context_scores or all(info['score'] == 0 for info in context_scores.values()):
-                # No se detectó contexto específico
                 primary_context = 'general'
                 confidence = 0.0
                 specialty = 'medicina_general'
                 is_covid = False
             else:
-                # Encontrar el contexto con mayor puntuación
                 best_context = max(context_scores.items(), key=lambda x: x[1]['score'])
                 primary_context = best_context[0]
                 max_score = best_context[1]['score']
-                
-                # Calcular confianza (normalizada)
-                confidence = min(max_score * 0.1, 1.0)  # 10% por punto, máximo 100%
+                confidence = min(max_score * 0.1, 1.0)
                 specialty = best_context[1]['specialty']
                 is_covid = (primary_context == 'covid19')
-                
-                # Recopilar todas las características detectadas
                 detected_features = best_context[1]['features']
             
             result = {
                 'primary_context': primary_context,
-                'context': primary_context,  # Mantener compatibilidad
+                'context': primary_context,
                 'confidence': confidence,
                 'detected_features': detected_features,
                 'clinical_specialty': specialty,
@@ -160,11 +157,11 @@ class DataAnalyzer:
                 'all_context_scores': context_scores
             }
             
-            self.logger.info(f"Contexto médico detectado: {primary_context} (confianza: {confidence:.2f})")
+            logger.info("Contexto médico detectado: %s (confianza: %.2f)", primary_context, confidence)
             return result
                     
         except Exception as e:
-            self.logger.error(f"Error detectando contexto médico: {str(e)}")
+            logger.error("Error detectando contexto médico: %s", str(e))
             return {
                 'primary_context': 'general',
                 'context': 'general',
@@ -181,12 +178,7 @@ class DataAnalyzer:
         try:
             field_mappings = {}
             data_types = {}
-            filtered_output_path = None  # Inicializar la ruta del archivo filtrado
-            patterns_result = {}
-            patterns_result = {}
-            patterns_result = {}
-            patterns_result = {}
-            patterns_result = {}
+            filtered_output_path = None
 
             # CALCULAR COMPLETENESS CON PROTECCIÓN CONTRA DIVISION BY ZERO
             total_cells = len(df) * len(df.columns)
@@ -209,7 +201,6 @@ class DataAnalyzer:
                     total_count = len(df)
                     col_completeness = non_null_count / total_count if total_count > 0 else 0.0
                     
-                    # Detectar tipo básico
                     if pd.api.types.is_numeric_dtype(df[col]):
                         detected_type = 'numerical'
                     elif pd.api.types.is_datetime64_any_dtype(df[col]):
@@ -226,7 +217,7 @@ class DataAnalyzer:
                     data_types[col] = detected_type
                 
                 except Exception as col_error:
-                    print(f"⚠️ Error procesando columna {col}: {col_error}")
+                    logger.warning("Error procesando columna %s: %s", col, col_error)
                     field_mappings[col] = {
                         'original_name': col,
                         'standard_name': col.lower().replace(' ', '_'),
@@ -235,48 +226,38 @@ class DataAnalyzer:
                     }
                     data_types[col] = 'categorical'
             
-            # REDUCIR COLUMNAS PARA COVID-19 SI ES NECESARIO (SOLO PARA GENERACIÓN)
-            # Mantener todas las columnas para análisis, filtrar solo para guardado
+            # REDUCIR COLUMNAS PARA COVID-19 (solo para guardado auxiliar)
             if context.get('primary_context') == 'covid19':
-                # Mapear columnas COVID-19 disponibles
                 covid_priority_columns = [
                     'PATIENT_ID', 'PATIENT', 'ID_PACIENTE', 'ID',
-                    'EDAD', 'AGE', 'YEARS', 'ANOS',
-                    'SEXO', 'GENDER', 'SEX', 'GENERO',
-                    'DIAGNOSTICO', 'DIAGNOSIS', 'DIAG',
-                    'SAT_02', 'OXYGEN', 'O2',
-                    'HIPER_ART', 'HYPERTENSION', 'PRESION',
-                    'ENF_RESPIRA', 'RESPIRATORY', 'RESPIRATORIO',
-                    'DIABETES', 'DIABETIC',
-                    'FARMACO', 'DRUG', 'MEDICATION',
+                    'EDAD/AGE', 'EDAD', 'AGE', 'YEARS', 'ANOS',
+                    'SEXO/SEX', 'SEXO', 'GENDER', 'SEX', 'GENERO',
+                    'DIAGNOSTICO', 'DIAGNOSIS', 'DIAG', 'DIAG ING/INPAT',
+                    'SAT_02', 'SAT_02_ING/INPAT', 'OXYGEN', 'O2',
+                    'UCI_DIAS/ICU_DAYS', 'TEMP_ING/INPAT',
+                    'FARMACO', 'FARMACO/DRUG_NOMBRE_COMERCIAL/COMERCIAL_NAME', 'DRUG', 'MEDICATION',
                     'UCI', 'ICU', 'INTENSIVE'
                 ]
-                
-                # Encontrar columnas existentes que coincidan con las prioridades COVID
                 existing_covid_cols = []
                 for col in df.columns:
                     for priority in covid_priority_columns:
-                        if priority.upper() in col.upper():
+                        if priority.upper() in str(col).upper():
                             existing_covid_cols.append(col)
                             break
-                
-                # Si no hay suficientes columnas COVID, usar todas las disponibles
                 if len(existing_covid_cols) < 4:
                     existing_covid_cols = df.columns.tolist()
-                
-                print(f"DEBUG: Columnas COVID seleccionadas: {existing_covid_cols}")
-                
-                # Crear dataset filtrado para generación sintética
+                logger.debug("Columnas COVID seleccionadas: %s", existing_covid_cols)
                 df_filtered = df[existing_covid_cols].copy()
                 
-                # Guardar dataset filtrado
-                filtered_output_path = 'data/real/filtered_covid_dataset.csv'
-                df_filtered.to_csv(filtered_output_path, index=False)
-                print(f"Dataset COVID-19 filtrado guardado en: {filtered_output_path} ({len(df_filtered.columns)} columnas)")
-                
-                # MANTENER EL DATAFRAME ORIGINAL para análisis
-                # No reemplazar df aquí para mantener todas las columnas en el análisis
-                
+                # Guardado condicionado por ENV (default ON, acorde a tu decisión)
+                if (os.getenv("SAVE_FILTERED_COVID_CSV", "true").lower() == "true"):
+                    filtered_output_path = 'data/real/filtered_covid_dataset.csv'
+                    try:
+                        df_filtered.to_csv(filtered_output_path, index=False)
+                        logger.info("Dataset COVID-19 filtrado guardado en: %s (%s columnas)", filtered_output_path, len(df_filtered.columns))
+                    except Exception as e:
+                        logger.error("Error guardando dataset COVID filtrado: %s", e)
+                        filtered_output_path = None
             
             return {
                 'field_mappings': field_mappings,
@@ -289,11 +270,10 @@ class DataAnalyzer:
                 'statistics': self._calculate_basic_statistics(df),
                 'filtered_file_path': filtered_output_path,
                 'cleaned_dataframe': df
-                
             }
         
         except Exception as e:
-            print(f"Error en _extract_safe_patterns: {e}")
+            logger.error("Error en _extract_safe_patterns: %s", e)
             return self._create_minimal_patterns_result(df)
     
     def _validate_required_columns(self, df: pd.DataFrame) -> Dict:

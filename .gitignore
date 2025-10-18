@@ -259,6 +259,7 @@ logs/
 outputs/
 data/synthetic/
 data/processed/
+data/uploaded_datasets
 temp/
 cache/
 
@@ -267,9 +268,23 @@ cache/
 *.joblib
 *.h5
 *.onnx
-models/
+
 
 # Generated reports and outputs
 reports/
 *.pdf
 *.docx
+
+# uv specific
+.uv/
+uv.lock
+
+# Old package managers (backup during migration)
+backup_old_env/
+Pipfile
+Pipfile.lock
+requirements.txt
+requirements_llm.txt
+
+# Local configuration files
+.langgraph_api  

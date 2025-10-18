@@ -18,6 +18,7 @@ from typing import Dict, List, Any, Optional, Union
 from enum import Enum
 from dataclasses import dataclass, asdict
 import logging
+import pandas as pd
 
 # Configurar logging
 logger = logging.getLogger(__name__)

@@ -9,8 +9,14 @@ import json
 import inspect
 import concurrent.futures
 import traceback
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 from dotenv import load_dotenv
+from src.utils.logging_config import get_logger
+from pydantic import ValidationError
+from src.agents.schemas import AgentResponse, Context
+
+logger = get_logger(__name__)
 
 # Añadir la ruta del proyecto al path de Python
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -23,16 +29,16 @@ load_dotenv()
 # FORZAR GROQ - Sobrescribir variable del sistema si FORCE_GROQ=true
 if os.getenv('FORCE_GROQ', 'false').lower() == 'true':
     os.environ['LLM_PROVIDER'] = 'groq'
-    print("🚀 [STREAMLIT] Variable LLM_PROVIDER forzada a 'groq'")
+    logger.info("[STREAMLIT] LLM_PROVIDER forzado a 'groq'")
 
 # Importar el wrapper síncrono para evitar problemas de event loop
 try:
     from src.utils.streamlit_async_wrapper import run_async_safe
     ASYNC_WRAPPER_AVAILABLE = True
-    print("✅ Wrapper síncrono disponible")
+    logger.info("Wrapper síncrono disponible")
 except ImportError as e:
     ASYNC_WRAPPER_AVAILABLE = False
-    print(f"⚠️ Wrapper síncrono no disponible: {e}")
+    logger.warning("Wrapper síncrono no disponible: %s", e)
 
 # Importar el selector de columnas médicas
 try:
@@ -40,7 +46,7 @@ try:
     COLUMN_SELECTOR_AVAILABLE = True
 except ImportError as e:
     COLUMN_SELECTOR_AVAILABLE = False
-    print(f"⚠️ Selector de columnas no disponible: {e}")
+    logger.warning("Selector de columnas no disponible: %s", e)
 
 # Configuración de página
 st.set_page_config(
@@ -143,47 +149,53 @@ st.markdown("""
 try:
     from src.config.llm_config import unified_llm_config
     LLM_CONFIGURED = True
-    connection_test = unified_llm_config.test_connection()
     provider_info = unified_llm_config.status_info
     active_provider = provider_info["active_provider"]
     
-    if connection_test:
-        print(f"✅ LLM conectado correctamente - Proveedor: {active_provider}")
-    else:
-        print(f"⚠️ LLM configurado pero sin conexión - Proveedor: {active_provider}")
-        
+    # FORZAR TEST DE CONEXIÓN para diagnosticar problema del chat
+    connection_test = False
+    try:
+        logger.info("🔍 Probando conexión con %s...", active_provider)
+        connection_test = unified_llm_config.test_connection()
+        if connection_test:
+            logger.info("✅ LLM conectado correctamente - Proveedor: %s", active_provider)
+        else:
+            logger.warning("❌ Test de conexión falló - Proveedor: %s", active_provider)
+    except Exception as e:
+        logger.error("💥 Error en test de conexión LLM: %s", e)
+        connection_test = False
 except Exception as e:
     LLM_CONFIGURED = False
     connection_test = False
     active_provider = "none"
-    print(f"⚠️ Error de configuración LLM: {e}")
+    logger.warning("Error de configuración LLM: %s", e)
 
 # Mantener compatibilidad con código existente
 AZURE_CONFIGURED = LLM_CONFIGURED and active_provider == "azure"
 
-# Importar orquestador con fallback para problemas de MRO en LangGraph
+# Importar orquestador con fallback
 try:
     from src.orchestration.langgraph_orchestrator import MedicalAgentsOrchestrator, AgentState
     LANGGRAPH_AVAILABLE = True
-    print("✅ LangGraph Orchestrator disponible")
+    logger.info("LangGraph Orchestrator disponible")
 except Exception as e:
-    print(f"ℹ️ Usando Simple Orchestrator (LangGraph tiene problema de dependencias)")
+    logger.info("Usando Simple Orchestrator (LangGraph tiene problema de dependencias): %s", e)
     try:
         from src.orchestration.simple_orchestrator import MedicalAgentsOrchestrator
         LANGGRAPH_AVAILABLE = False
-        print("✅ Usando Simple Orchestrator como fallback")
+        logger.info("Usando Simple Orchestrator como fallback")
     except Exception as e2:
-        print(f"❌ Error cargando orquestador alternativo: {e2}")
+        logger.error("Error cargando orquestador alternativo: %s", e2)
         LANGGRAPH_AVAILABLE = False
 
 # Importar el nuevo FastOrchestrator como alternativa optimizada
 try:
     from src.orchestration.fast_orchestrator import FastMedicalOrchestrator
     FAST_ORCHESTRATOR_AVAILABLE = True
-    print("✅ Fast Orchestrator disponible")
+    logger.info("Fast Orchestrator disponible")
 except Exception as e:
     FAST_ORCHESTRATOR_AVAILABLE = False
-    print(f"⚠️ Fast Orchestrator no disponible: {e}")
+    logger.warning("Fast Orchestrator no disponible: %s", e)
 
 try:
     from src.agents.base_agent import BaseLLMAgent, BaseAgentConfig
@@ -196,26 +208,26 @@ try:
         from src.agents.validator_agent import MedicalValidatorAgent
         VALIDATOR_AVAILABLE = True
     except Exception as e:
-        print(f"⚠️ Validator agent no disponible: {e}")
+        logger.warning("Validator agent no disponible: %s", e)
         VALIDATOR_AVAILABLE = False
     
     try:
         from src.agents.simulator_agent import PatientSimulatorAgent
         SIMULATOR_AVAILABLE = True
     except Exception as e:
-        print(f"⚠️ Simulator agent no disponible: {e}")
+        logger.warning("Simulator agent no disponible: %s", e)
         SIMULATOR_AVAILABLE = False
     
     try:
         from src.agents.evaluator_agent import UtilityEvaluatorAgent
         EVALUATOR_AVAILABLE = True
     except Exception as e:
-        print(f"⚠️ Evaluator agent no disponible: {e}")
+        logger.warning("Evaluator agent no disponible: %s", e)
         EVALUATOR_AVAILABLE = False
 
     AGENTS_AVAILABLE = True
-    LANGGRAPH_AVAILABLE = True
-    print("✅ LangGraph Orchestrator y Agentes cargados correctamente")
+    # Respetar LANGGRAPH_AVAILABLE ya establecido
+    logger.info("Agentes cargados correctamente. Orquestador: %s", "LangGraph" if LANGGRAPH_AVAILABLE else "Simple")
     
 except Exception as e:
     AGENTS_AVAILABLE = False
@@ -223,7 +235,7 @@ except Exception as e:
     VALIDATOR_AVAILABLE = False
     SIMULATOR_AVAILABLE = False
     EVALUATOR_AVAILABLE = False
-    print(f"❌ Error cargando agentes: {e}")
+    logger.error("Error cargando agentes: %s", e)
 
 # Agente mock para desarrollo
 class MockAgent:
@@ -368,12 +380,12 @@ def clean_response_message(message: str) -> str:
             parsed = json.loads(message_stripped)
             if 'message' in parsed:
                 message = parsed['message']
-                print("✅ [CLEAN] JSON crudo extraído exitosamente")
+                logger.info("JSON crudo extraído exitosamente")
             elif 'content' in parsed:
                 message = parsed['content']
-                print("✅ [CLEAN] Contenido JSON extraído")
+                logger.info("Contenido JSON extraído")
         except json.JSONDecodeError as e:
-            print(f"⚠️ [CLEAN] Error parseando JSON crudo: {e}")
+            logger.warning("Error parseando JSON crudo: %s", e)
             # Si no se puede parsear, mantener el mensaje original
             pass
     
@@ -381,14 +393,13 @@ def clean_response_message(message: str) -> str:
     elif '"message"' in message_stripped and '"intention"' in message_stripped:
         try:
             # Buscar el patrón JSON dentro del texto
-            import re
             json_pattern = r'\{"intention".*?"message"[^}]*\}'
             match = re.search(json_pattern, message_stripped, re.DOTALL)
             if match:
                 parsed = json.loads(match.group())
                 if 'message' in parsed:
                     message = parsed['message']
-                    print("✅ [CLEAN] JSON anidado extraído")
+                    logger.info("JSON anidado extraído")
         except:
             pass
     
@@ -406,7 +417,7 @@ def clean_response_message(message: str) -> str:
         ]
         
         if any(pattern in message for pattern in corrupted_patterns):
-            print("🔍 [CLEAN] Detectada corrupción de encoding, aplicando corrección")
+            logger.info("Detectada corrupción de encoding, aplicando corrección")
             
             # ESTRATEGIA MÚLTIPLE DE CORRECCIÓN
             original_message = message
@@ -482,15 +493,15 @@ def clean_response_message(message: str) -> str:
             
             if best_attempt:
                 message = best_attempt[1]
-                print(f"✅ [CLEAN] Mejor corrección: {best_attempt[0]} (score: {best_score})")
+                logger.info("Mejor corrección: %s (score: %d)", best_attempt[0], best_score)
         
         # MÉTODO 2: Limpiar secuencias Unicode escapadas (ya funciona bien)
         unicode_patterns = [
             (r'\\u00a1', '¡'), (r'\\u00bf', '¿'),
             (r'\\u00e1', 'á'), (r'\\u00e9', 'é'), (r'\\u00ed', 'í'), 
             (r'\\u00f3', 'ó'), (r'\\u00fa', 'ú'), (r'\\u00f1', 'ñ'),
-            (r'\\u00c1', 'Á'), (r'\\u00c9', 'É'), (r'\\u00cd', 'Í'), 
-            (r'\\u00d3', 'Ó'), (r'\\u00da', 'Ú'), (r'\\u00d1', 'Ñ')
+            (r'\\u00c1', 'Á'), (r'\\u00c9', 'É'), (r'\\u00CD', 'Í'), 
+            (r'\\u00D3', 'Ó'), (r'\\u00DA', 'Ú'), (r'\\u00D1', 'Ñ')
         ]
         
         unicode_replaced = False
@@ -500,19 +511,19 @@ def clean_response_message(message: str) -> str:
                 unicode_replaced = True
         
         if unicode_replaced:
-            print("✅ [CLEAN] Secuencias Unicode escapadas convertidas")
+            logger.info("Secuencias Unicode escapadas convertidas")
         
         # MÉTODO 3: Limpieza final conservadora
         try:
             decoded = message.encode().decode('unicode_escape')
             if decoded != message and not any(char in decoded for char in ['Ã', 'Â']):
                 message = decoded
-                print("✅ [CLEAN] Unicode escape final aplicado")
+                logger.info("Unicode escape final aplicado")
         except:
             pass
             
     except Exception as e:
-        print(f"⚠️ [CLEAN] Error en limpieza de mensaje: {e}")
+        logger.warning("Error en limpieza de mensaje: %s", e)
     
     return message.strip()
 
@@ -522,8 +533,8 @@ def initialize_orchestrator():
     Inicializa el orquestador principal con prioridad para FastOrchestrator.
     FastOrchestrator es optimizado para respuestas rápidas sin timeout.
     """
-    # PRIORIDAD 1: FastOrchestrator (Optimizado para velocidad)
-    if FAST_ORCHESTRATOR_AVAILABLE and LLM_CONFIGURED:
+    # PRIORIDAD 1: FastOrchestrator (Optimizado para velocidad) - SOLO SI LLM CONECTADO
+    if FAST_ORCHESTRATOR_AVAILABLE and LLM_CONFIGURED and connection_test:
         try:
             agents = {}
             
@@ -536,28 +547,28 @@ def initialize_orchestrator():
                     
                     if VALIDATOR_AVAILABLE:
                         agents["validator"] = MedicalValidatorAgent()
-                        print("✅ Validator agent agregado a FastOrchestrator")
+                        logger.info("Validator agent agregado a FastOrchestrator")
                     
                     if SIMULATOR_AVAILABLE:
                         agents["simulator"] = PatientSimulatorAgent()
-                        print("✅ Simulator agent agregado a FastOrchestrator")
+                        logger.info("Simulator agent agregado a FastOrchestrator")
                     
                     if EVALUATOR_AVAILABLE:
                         agents["evaluator"] = UtilityEvaluatorAgent()
-                        print("✅ Evaluator agent agregado a FastOrchestrator")
+                        logger.info("Evaluator agent agregado a FastOrchestrator")
                         
                 except Exception as e:
-                    print(f"⚠️ Algunos agentes no disponibles para FastOrchestrator: {e}")
+                    logger.warning("Algunos agentes no disponibles para FastOrchestrator: %s", e)
             
             fast_orchestrator = FastMedicalOrchestrator(agents)
-            print("🚀 FastMedicalOrchestrator inicializado (modo optimizado)")
+            logger.info("🚀 FastMedicalOrchestrator inicializado con LLM REAL conectado")
             return fast_orchestrator
             
         except Exception as e:
-            print(f"❌ Error inicializando FastOrchestrator: {e}")
+            logger.error("Error inicializando FastOrchestrator: %s", e)
     
-    # PRIORIDAD 2: LangGraph Orchestrator (Original)
-    if AGENTS_AVAILABLE and LANGGRAPH_AVAILABLE and LLM_CONFIGURED:
+    # PRIORIDAD 2: LangGraph Orchestrator (Original) - SOLO SI LLM CONECTADO
+    if AGENTS_AVAILABLE and LANGGRAPH_AVAILABLE and LLM_CONFIGURED and connection_test:
         try:
             agents = {
                 "coordinator": CoordinatorAgent(),
@@ -568,24 +579,27 @@ def initialize_orchestrator():
             # Agregar agentes opcionales solo si están disponibles
             if VALIDATOR_AVAILABLE:
                 agents["validator"] = MedicalValidatorAgent()
-                print("✅ Validator agent agregado")
+                logger.info("Validator agent agregado")
             
             if SIMULATOR_AVAILABLE:
                 agents["simulator"] = PatientSimulatorAgent()
-                print("✅ Simulator agent agregado")
+                logger.info("Simulator agent agregado")
             
             if EVALUATOR_AVAILABLE:
                 agents["evaluator"] = UtilityEvaluatorAgent()
-                print("✅ Evaluator agent agregado")
+                logger.info("Evaluator agent agregado")
             
             orchestrator = MedicalAgentsOrchestrator(agents)
-            print("✅ LangGraph Orchestrator inicializado con agentes reales")
+            logger.info("🔧 LangGraph Orchestrator inicializado con LLM REAL conectado")
             return orchestrator
         except Exception as e:
-            print(f"❌ Error en LangGraph: {e}")
+            logger.error("Error en LangGraph: %s", e)
     
     # PRIORIDAD 3: Mock Orchestrator (Fallback)
-    print("⚠️ Usando orquestador mock")
+    if LLM_CONFIGURED and not connection_test:
+        logger.warning("🟡 LLM configurado pero conexión falló, usando orquestador mock")
+    else:
+        logger.info("🟡 LLM no configurado, usando orquestador mock")
     return create_mock_orchestrator()
 
 @st.cache_resource 
@@ -688,17 +702,29 @@ def create_mock_orchestrator():
                 # Para preguntas conversacionales, médicas o generales
                 self.state["current_agent"] = "coordinator"
                 
-                # Si Azure está configurado, usar el coordinador real
-                if AZURE_CONFIGURED and connection_test:
-                    agent = self.agents["coordinator"]
-                    # Usar método síncrono o wrapper según sea necesario
-                    if hasattr(agent, 'process_sync'):
-                        response = agent.process_sync(user_input, context)
-                    elif ASYNC_WRAPPER_AVAILABLE:
-                        response = run_async_safe(agent.process, user_input, context)
-                    else:
-                        response = {"message": "❌ Error: Agente async sin wrapper disponible", "agent": "coordinator", "error": True}
-                    return response
+                # SI TENEMOS CONEXIÓN LLM, usar el coordinador real
+                if LLM_CONFIGURED and connection_test and AGENTS_AVAILABLE:
+                    try:
+                        from src.agents.coordinator_agent import CoordinatorAgent
+                        real_coordinator = CoordinatorAgent()
+                        
+                        # Usar método síncrono o wrapper según sea necesario
+                        if hasattr(real_coordinator, 'process_sync'):
+                            response = real_coordinator.process_sync(user_input, context)
+                        elif ASYNC_WRAPPER_AVAILABLE:
+                            response = run_async_safe(real_coordinator.process, user_input, context)
+                        else:
+                            response = {"message": "❌ Error: Agente async sin wrapper disponible", "agent": "coordinator", "error": True}
+                        
+                        # Limpiar la respuesta si viene del LLM real
+                        if isinstance(response, dict) and "message" in response:
+                            response["message"] = clean_response_message(response["message"])
+                        
+                        return response
+                    except Exception as e:
+                        logger.error("Error usando coordinador real: %s", e)
+                        # Si falla, usar mock como fallback
+                        return self._generate_mock_medical_response(user_input, context)
                 else:
                     # Respuesta mock inteligente para preguntas médicas
                     return self._generate_mock_medical_response(user_input, context)
@@ -722,7 +748,7 @@ def create_mock_orchestrator():
                 }
             elif any(term in user_lower for term in ["hipertensión", "presión", "cardiovascular"]):
                 return {
-                    "message": "❤️ **Factores de Riesgo Cardiovascular**\n\nPrincipales factores identificados en estudios clínicos:\n\n• **Modificables**: Tabaquismo, colesterol alto, sedentarismo\n• **No modificables**: Edad, sexo, historia familiar\n• **Metabólicos**: Diabetes, obesidad, síndrome metabólico\n• **Otros**: Estrés, apnea del sueño, enfermedad renal\n\n**¿Tienes datos cardiovasculares?** Puedo ayudarte a analizarlos y generar datasets sintéticos para investigación.\n\n*Información basada en guías clínicas internacionales.*",
+                    "message": "❤️ **Factores de Riesgo Cardiovascular**\n\nPrincipales factores identificados en estudios clínicos:\n\n• **Modificables**: Tabaquismo, colesterol alto, sedentarismo\n• **No modificables**: Edad, sexo, historia familiar\n• **Metabólicos**: Diabetes, obesidad, síndrome metabólico\n• **Otros**: Estrés, apnea del sueño, enfermedad renal\n\n**¿Tienes datos cardiovasulares?** Puedo ayudarte a analizarlos y generar datasets sintéticos para investigación.\n\n*Información basada en guías clínicas internacionales.*",
                     "agent": "coordinator",
                     "topic": "cardiovascular"
                 }
@@ -834,9 +860,23 @@ def process_uploaded_file(uploaded_file=None):
 
 def handle_synthetic_data_response(response, context=None):
     """Maneja la respuesta de generación sintética de forma centralizada"""
-    if "synthetic_data" in response:
-        synthetic_df = response["synthetic_data"]
-        generation_info = response.get("generation_info", {})
+    # Aceptar tanto dict plano como AgentResponse
+    resp_dict = response
+    try:
+        if isinstance(response, AgentResponse):
+            resp_dict = response.model_dump()
+    except Exception:
+        pass
+
+    payload = resp_dict.get("payload") if isinstance(resp_dict, dict) else None
+    if isinstance(payload, dict) and "synthetic_data" in payload:
+        synthetic_df = payload.get("synthetic_data")
+        generation_info = payload.get("generation_info", {}) or resp_dict.get("generation_info", {})
+    elif isinstance(resp_dict, dict) and "synthetic_data" in resp_dict:
+        synthetic_df = resp_dict["synthetic_data"]
+        generation_info = resp_dict.get("generation_info", {})
+    else:
+        return False
         
         # Si generation_info está vacío o incompleto, crear uno por defecto
         if not generation_info or not generation_info.get('model_type'):
@@ -1427,7 +1467,7 @@ def main_chat_loop():
                 "role": "assistant", 
                 "content": clean_response, 
                 "agent": response.get("agent"),
-                "dataset_type": response.get("dataset_type")
+                "mock": False
             })
         
         st.rerun()
@@ -1574,7 +1614,7 @@ def main_chat_loop():
                 "role": "assistant", 
                 "content": clean_response, 
                 "agent": response.get("agent"),
-                "dataset_type": response.get("dataset_type")
+                "mock": False
             })
         
         st.rerun()
@@ -1620,49 +1660,121 @@ def main_chat_loop():
                 "role": "assistant", 
                 "content": cleaned_message, 
                 "agent": response.get("agent"),
-                "dataset_type": response.get("dataset_type")
+                "mock": False
             })
         
         st.rerun()
+
+def validate_agent_response(response: Any) -> Dict[str, Any]:
+    """
+    Valida y estandariza la respuesta de un agente.
+    Acepta diccionarios o instancias de AgentResponse y devuelve un diccionario.
+    """
+    if isinstance(response, AgentResponse):
+        return response.model_dump(exclude_none=True)
+    
+    if isinstance(response, dict):
+        # Asegurar que los campos mínimos estén presentes
+        return {
+            "message": response.get("message", "Respuesta no estructurada."),
+            "agent": response.get("agent", "unknown"),
+            "success": response.get("success", True),
+            "payload": response.get("payload"),
+            "metadata": response.get("metadata", {}),
+        }
+    
+    # Si es un string u otro tipo, envolverlo en una respuesta estándar
+    return {
+        "message": str(response),
+        "agent": "system",
+        "success": False,
+        "payload": None,
+        "metadata": {"raw_response": response},
+    }
+
+def build_typed_context_dict(context: Optional[Dict[str, Any]]) -> Context:
+    """
+    Construye un diccionario validado compatible con el modelo Pydantic Context.
+    """
+    if context is None:
+        return Context()
+
+    # Crear una copia para no modificar el original
+    context_copy = context.copy()
+
+    # Pydantic no puede manejar DataFrames, así que lo extraemos temporalmente
+    dataframe = context_copy.pop('dataframe', None)
+    synthetic_data = context_copy.pop('synthetic_data', None)
+
+    try:
+        # Validar el resto del contexto
+        typed_context = Context(**context_copy)
+        
+        # Reasignar los DataFrames al objeto validado
+        if dataframe is not None:
+            typed_context.dataframe = dataframe
+        if synthetic_data is not None:
+            typed_context.synthetic_data = synthetic_data
+            
+        return typed_context
+
+    except ValidationError as e:
+        logger.warning("Error de validación de contexto, usando valores por defecto: %s", e)
+        # En caso de error, devolver un contexto por defecto pero intentando preservar los dataframes
+        default_context = Context()
+        if dataframe is not None:
+            default_context.dataframe = dataframe
+        if synthetic_data is not None:
+            default_context.synthetic_data = synthetic_data
+        return default_context
+    except Exception as e:
+        logger.error("Error inesperado construyendo contexto: %s", e)
+        return Context() # Devuelve un contexto vacío como fallback
 
 def process_orchestrator_input_safe(orchestrator, user_input: str, context: dict = None):
     """
     Ejecuta el orquestador de forma síncrona usando el wrapper para evitar problemas de event loop.
     """
     try:
-        print(f"🔍 Debugging orchestrator type: {type(orchestrator)}")
-        print(f"🔍 Has process_user_input_sync: {hasattr(orchestrator, 'process_user_input_sync')}")
-        print(f"🔍 Has process_user_input: {hasattr(orchestrator, 'process_user_input')}")
-        print(f"🔍 ASYNC_WRAPPER_AVAILABLE: {ASYNC_WRAPPER_AVAILABLE}")
+        logger.info("Procesando input con orquestador: %s", type(orchestrator))
+        logger.info("Contexto recibido: %s", context)
+        # Construir contexto tipado (sin romper compatibilidad)
+        typed_ctx = build_typed_context_dict(context)
         
+        # Convertir el objeto Pydantic a un diccionario
+        ctx_dict = typed_ctx.model_dump(exclude_none=True)
+
         # Verificar si el orquestador tiene el método síncrono
         if hasattr(orchestrator, 'process_user_input_sync'):
-            print("✅ Usando process_user_input_sync")
-            return orchestrator.process_user_input_sync(user_input, context)
+            logger.info("Usando process_user_input_sync")
+            resp = orchestrator.process_user_input_sync(user_input, ctx_dict)
+            return validate_agent_response(resp)
         
         # Si no tiene el método síncrono pero tenemos el wrapper disponible
         elif ASYNC_WRAPPER_AVAILABLE and hasattr(orchestrator, 'process_user_input'):
-            print("✅ Usando wrapper con process_user_input")
+            logger.info("Usando wrapper con process_user_input")
             # Pasar la función y los argumentos por separado al wrapper
-            return run_async_safe(orchestrator.process_user_input, user_input, context)
+            resp = run_async_safe(orchestrator.process_user_input, user_input, ctx_dict)
+            return validate_agent_response(resp)
         
         # Fallback: intentar ejecutar directamente (para mocks)
         else:
-            print("⚠️ Usando fallback directo")
+            logger.info("Usando fallback directo")
             # Para orquestadores mock que pueden ser síncronos o async
-            result = orchestrator.process_user_input(user_input, context)
-            print(f"🔍 Result type: {type(result)}")
+            result = orchestrator.process_user_input(user_input, typed_ctx)
+            logger.info("Resultado obtenido: %s", result)
             
             # Si es una corrutina, necesitamos ejecutarla de forma async
             import inspect
             if inspect.iscoroutine(result):
-                print("🔍 Result is coroutine, handling async")
+                logger.info("El resultado es una corrutina, manejando async")
                 if ASYNC_WRAPPER_AVAILABLE:
                     # Cancelar la corrutina actual y crear una nueva llamada
                     result.close()  # Liberar la corrutina no ejecutada
-                    return run_async_safe(orchestrator.process_user_input, user_input, context)
+                    resp = run_async_safe(orchestrator.process_user_input, user_input, typed_ctx)
+                    return validate_agent_response(resp)
                 else:
-                    print("⚠️ No wrapper available, using basic asyncio")
+                    logger.warning("No hay wrapper disponible, usando asyncio básico")
                     # Fallback simple: intentar con asyncio básico
                     import asyncio
                     import concurrent.futures
@@ -1671,28 +1783,29 @@ def process_orchestrator_input_safe(orchestrator, user_input: str, context: dict
                         new_loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(new_loop)
                         try:
-                            return new_loop.run_until_complete(orchestrator.process_user_input(user_input, context))
+                            return new_loop.run_until_complete(orchestrator.process_user_input(user_input, typed_ctx))
                         finally:
                             new_loop.close()
                     
                     try:
                         with concurrent.futures.ThreadPoolExecutor() as executor:
                             future = executor.submit(run_async)
-                            return future.result(timeout=30)
+                            resp = future.result(timeout=30)
+                            return validate_agent_response(resp)
                     except Exception as e:
-                        print(f"Error en fallback async: {e}")
+                        logger.error("Error en fallback async: %s", e)
                         return {
                             "message": f"❌ Error ejecutando operación async: {str(e)}",
                             "agent": "system", 
                             "error": True
                         }
             else:
-                print("✅ Result is sync, returning directly")
+                logger.info("El resultado es sync, devolviendo directamente")
                 # Es síncrono, devolver directamente
-                return result
+                return validate_agent_response(result)
             
     except Exception as e:
-        print(f"❌ Error en process_orchestrator_input_safe: {e}")
+        logger.error("Error en process_orchestrator_input_safe: %s", e)
         import traceback
         traceback.print_exc()
         return {

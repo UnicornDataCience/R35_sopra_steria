@@ -17,12 +17,10 @@ from ..agents.simulator_agent import PatientSimulatorAgent
 from ..agents.evaluator_agent import UtilityEvaluatorAgent
 from ..adapters.universal_dataset_detector import UniversalDatasetDetector
 from ..utils.streamlit_async_wrapper import run_async_safe
+from src.utils.logging_config import get_logger
 
-# Configurar logger
-logger = logging.getLogger(__name__)
-
-# Usar TypedDict para mejor compatibilidad con LangGraph
-from typing import TypedDict
+# Configurar logger centralizado
+logger = get_logger(__name__)
 
 class AgentState(TypedDict, total=False):
     """Estado del agente usando TypedDict para compatibilidad con LangGraph"""
@@ -37,16 +35,16 @@ class AgentState(TypedDict, total=False):
 class MedicalAgentsOrchestrator:
     def __init__(self, agents: Dict[str, Any]):
         start_time = time.time()
-        print(f"🏗️ [{datetime.datetime.now().strftime('%H:%M:%S')}] Iniciando LangGraph Orchestrator...")
+        logger.info("Iniciando LangGraph Orchestrator...")
         
         self.agents = agents
         self.universal_detector = UniversalDatasetDetector()
         
-        print(f"🏗️ [{datetime.datetime.now().strftime('%H:%M:%S')}] Creando workflow...")
+        logger.info("Creando workflow...")
         self.workflow = self._create_workflow()
         
         end_time = time.time()
-        print(f"✅ [{datetime.datetime.now().strftime('%H:%M:%S')}] LangGraph Orchestrator inicializado en {end_time - start_time:.2f}s")
+        logger.info("LangGraph Orchestrator inicializado en %.2fs", end_time - start_time)
 
     def _create_workflow(self) -> StateGraph:
         workflow = StateGraph(AgentState)
@@ -54,7 +52,9 @@ class MedicalAgentsOrchestrator:
         workflow.add_node("universal_analyzer", self._universal_analyzer_node)
         workflow.add_node("analyzer", self._analyzer_node)
         workflow.add_node("generator", self._generator_node)
-        # ... (otros nodos se pueden añadir aquí)
+        workflow.add_node("validator", self._validator_node)
+        workflow.add_node("evaluator", self._evaluator_node)
+        workflow.add_node("simulator", self._simulator_node)
         
         workflow.add_edge(START, "coordinator")
         workflow.add_conditional_edges(
@@ -64,18 +64,24 @@ class MedicalAgentsOrchestrator:
                 "universal_analyzer": "universal_analyzer",
                 "analyzer": "analyzer",
                 "generator": "generator",
+                "validator": "validator",
+                "evaluator": "evaluator",
+                "simulator": "simulator",
                 "__end__": END
             }
         )
         workflow.add_edge("universal_analyzer", "analyzer")
         workflow.add_edge("analyzer", END)
         workflow.add_edge("generator", END)
+        workflow.add_edge("validator", END)
+        workflow.add_edge("evaluator", END)
+        workflow.add_edge("simulator", END)
         return workflow.compile()
 
     async def _coordinator_node(self, state: AgentState) -> AgentState:
         try:
             start_time = time.time()
-            print(f"🔀 [{datetime.datetime.now().strftime('%H:%M:%S')}] Iniciando coordinator_node...")
+            logger.info("Iniciando coordinator_node...")
             
             user_input = state.get("user_input", "")
             context = state.get("context", {})
@@ -83,7 +89,7 @@ class MedicalAgentsOrchestrator:
                 state["error"] = "No se proporcionó entrada del usuario"
                 return state
             
-            print(f"🔀 [{datetime.datetime.now().strftime('%H:%M:%S')}] Input: {user_input[:50]}...")
+            logger.debug("Input: %s", user_input[:80])
             
             # Crear un nuevo event loop si es necesario para evitar "Event loop is closed"
             import asyncio
@@ -96,22 +102,22 @@ class MedicalAgentsOrchestrator:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
             
-            print(f"🔀 [{datetime.datetime.now().strftime('%H:%M:%S')}] Llamando al agente coordinador...")
+            logger.info("Llamando al agente coordinador...")
             response = await self.agents["coordinator"].process(user_input, context)
             state["coordinator_response"] = response
             
             end_time = time.time()
-            print(f"✅ [{datetime.datetime.now().strftime('%H:%M:%S')}] Coordinator completado en {end_time - start_time:.2f}s")
+            logger.info("Coordinator completado en %.2fs", end_time - start_time)
             return state
         except Exception as e:
-            logger.error(f"Error en _coordinator_node: {e}")
+            logger.error("Error en _coordinator_node: %s", e)
             state["error"] = f"Error en coordinador: {str(e)}"
             return state
 
     async def _universal_analyzer_node(self, state: AgentState) -> AgentState:
         try:
             start_time = time.time()
-            print(f"🔍 [{datetime.datetime.now().strftime('%H:%M:%S')}] Iniciando universal_analyzer_node...")
+            logger.info("Iniciando universal_analyzer_node...")
             
             context = state.get("context", {})
             df = context.get("dataframe")
@@ -119,193 +125,424 @@ class MedicalAgentsOrchestrator:
                 state["error"] = "Dataset no encontrado para análisis."
                 return state
             
-            print(f"🔍 [{datetime.datetime.now().strftime('%H:%M:%S')}] Analizando dataset de {df.shape[0]}x{df.shape[1]}...")
-            analysis = self.universal_detector.analyze_dataset(df)
-            state["universal_analysis"] = analysis
-            state["context"]["universal_analysis"] = analysis # Asegurar que el contexto se actualiza
+            logger.info("Analizando dataset de %sx%s...", df.shape[0], df.shape[1])
+            
+            # 1. Análisis de clasificación/detección (rápido)
+            detection_analysis = self.universal_detector.analyze_dataset(df)
+            
+            # 2. 🚀 FASE 2: Análisis EDA completo con estadísticas
+            from src.analysis.complete_eda import CompleteEDAAnalyzer
+            eda_analyzer = CompleteEDAAnalyzer()
+            
+            # Usar la misma muestra si el detector la usó
+            sample_info = detection_analysis.get('sampling_info', {})
+            if sample_info.get('sampling_applied', False):
+                sample_size = sample_info.get('analyzed_rows', 2000)
+                df_for_eda = df.sample(n=min(sample_size, len(df)), random_state=42)
+                logger.info("📊 Usando muestra de %d filas para análisis EDA", len(df_for_eda))
+            else:
+                df_for_eda = df
+            
+            eda_analysis = eda_analyzer.analyze(df_for_eda, sample_info)
+            
+            # 3. Combinar ambos análisis
+            combined_analysis = {
+                **detection_analysis,  # Clasificación, dominio, mapeos
+                **eda_analysis,  # Estadísticas, correlaciones, valores nulos
+            }
+            
+            state["universal_analysis"] = combined_analysis
+            state["context"]["universal_analysis"] = combined_analysis
             
             end_time = time.time()
-            print(f"✅ [{datetime.datetime.now().strftime('%H:%M:%S')}] Universal analyzer completado en {end_time - start_time:.2f}s")
+            logger.info("Universal analyzer + EDA completado en %.2fs", end_time - start_time)
             return state
         except Exception as e:
-            logger.error(f"Error en _universal_analyzer_node: {e}")
+            logger.error("Error en _universal_analyzer_node: %s", e)
             state["error"] = f"Error en analizador universal: {str(e)}"
             return state
 
     async def _analyzer_node(self, state: AgentState) -> AgentState:
         try:
             start_time = time.time()
-            print(f"📊 [{datetime.datetime.now().strftime('%H:%M:%S')}] Iniciando analyzer_node...")
+            logger.info("Iniciando analyzer_node...")
             
             context = state.get("context", {})
-            print(f"📊 [{datetime.datetime.now().strftime('%H:%M:%S')}] Llamando al agente analyzer...")
+            # IMPORTANTE: Asegurarse de que universal_analysis esté en el contexto
+            if "universal_analysis" in state and state["universal_analysis"]:
+                context["universal_analysis"] = state["universal_analysis"]
+                logger.info("✅ Universal analysis agregado al contexto del analyzer")
+            else:
+                logger.warning("⚠️ No hay universal_analysis en el state")
+            
+            logger.info("Llamando al agente analyzer...")
             response = await self.agents["analyzer"].analyze_dataset(None, context)
             state["messages"] = state.get("messages", []) + [response]
             
             end_time = time.time()
-            print(f"✅ [{datetime.datetime.now().strftime('%H:%M:%S')}] Analyzer completado en {end_time - start_time:.2f}s")
+            logger.info("Analyzer completado en %.2fs", end_time - start_time)
             return state
         except Exception as e:
-            logger.error(f"Error en _analyzer_node: {e}")
+            logger.error("Error en _analyzer_node: %s", e)
             state["error"] = f"Error en analizador: {str(e)}"
             return state
 
     async def _generator_node(self, state: AgentState) -> AgentState:
-        start_time = time.time()
-        print(f"🏭 [{datetime.datetime.now().strftime('%H:%M:%S')}] Iniciando generator_node...")
-        
-        params = state["coordinator_response"].get("parameters", {})
-        
-        # Obtener DataFrame original
-        df = state["context"].get("dataframe")
-        if df is None:
-            state["error"] = "Dataset no encontrado para generación."
+        try:
+            start_time = time.time()
+            logger.info("🔥 Iniciando generator_node...")
+            
+            # Obtener parámetros desde coordinator_response O directamente desde context
+            params = state["coordinator_response"].get("parameters", {})
+            
+            # Si no hay parámetros en coordinator_response, buscar en context
+            if not params or not any(k in params for k in ['model_type', 'num_samples']):
+                logger.info("Parámetros no encontrados en coordinator_response, buscando en context...")
+                context_params = {
+                    "model_type": state["context"].get("model_type"),
+                    "num_samples": state["context"].get("num_samples"),
+                }
+                # Filtrar valores None
+                params = {k: v for k, v in context_params.items() if v is not None}
+                logger.info("Parámetros extraídos del context: %s", params)
+            
+            df = state["context"].get("dataframe")
+            if df is None:
+                error_msg = "Dataset no encontrado para generación."
+                logger.error("❌ %s", error_msg)
+                logger.error("Context keys disponibles: %s", list(state["context"].keys()))
+                state["error"] = error_msg
+                return state
+            
+            logger.info("📊 Dataset original: %sx%s", df.shape[0], df.shape[1])
+        except Exception as e:
+            logger.error("❌ Error al iniciar generator_node: %s", e, exc_info=True)
+            state["error"] = f"Error al iniciar generación: {str(e)}"
             return state
         
-        print(f"🏭 [{datetime.datetime.now().strftime('%H:%M:%S')}] Dataset original: {df.shape[0]}x{df.shape[1]}")
-        
-        # Verificar si hay columnas seleccionadas por el usuario
         selected_columns = state["context"].get("selected_columns")
         
         if selected_columns:
-            # Usar las columnas seleccionadas por el usuario
             df_for_generation = df[selected_columns].copy()
-            logger.info(f"Usando {len(selected_columns)} columnas seleccionadas por el usuario para generación")
+            logger.info("Usando %s columnas seleccionadas por el usuario para generación", len(selected_columns))
         else:
-            # Aplicar lógica automática basada en el tipo de dataset
             universal_analysis = state["context"].get("universal_analysis", {})
             dataset_type = universal_analysis.get("medical_domain", "unknown")
             
             if dataset_type == "covid19":
-                # Para COVID-19, usar solo 10 columnas específicas
                 covid_columns = [
                     'age', 'sex', 'patient_type', 'pneumonia', 'diabetes', 
                     'copd', 'asthma', 'inmsupr', 'hypertension', 'cardiovascular'
                 ]
                 available_covid_cols = [col for col in covid_columns if col in df.columns]
                 
-                if len(available_covid_cols) >= 5:  # Mínimo 5 columnas
+                if len(available_covid_cols) >= 5:
                     df_for_generation = df[available_covid_cols].copy()
-                    logger.info(f"Usando {len(available_covid_cols)} columnas COVID-19 específicas")
+                    logger.info("Usando %s columnas COVID-19 específicas", len(available_covid_cols))
                 else:
-                    # Fallback: usar todas las columnas
                     df_for_generation = df.copy()
                     logger.warning("No suficientes columnas COVID-19, usando todas las columnas")
             else:
-                # Para otros datasets, usar todas las columnas (máximo 15 para rendimiento)
                 if len(df.columns) > 15:
-                    # Priorizar columnas numéricas y categóricas importantes
                     numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
                     categorical_cols = df.select_dtypes(include=['object']).columns.tolist()
-                    
                     selected_auto = (numeric_cols[:10] + categorical_cols[:5])[:15]
                     df_for_generation = df[selected_auto].copy()
-                    logger.info(f"Dataset grande: usando {len(selected_auto)} columnas automáticamente seleccionadas")
+                    logger.info("Dataset grande: usando %s columnas automáticamente seleccionadas", len(selected_auto))
                 else:
                     df_for_generation = df.copy()
-                    logger.info(f"Usando todas las {len(df.columns)} columnas del dataset")
+                    logger.info("Usando todas las %s columnas del dataset", len(df.columns))
         
-        print(f"🏭 [{datetime.datetime.now().strftime('%H:%M:%S')}] Dataset para generación: {df_for_generation.shape[0]}x{df_for_generation.shape[1]}")
+        logger.info("Dataset para generación: %sx%s", df_for_generation.shape[0], df_for_generation.shape[1])
         
-        # Actualizar el contexto con el DataFrame procesado
-        updated_context = {**state["context"], **params}
-        updated_context["dataframe"] = df_for_generation
-        updated_context["original_dataframe"] = df  # Mantener referencia al original
+        # 🔥 IMPORTANTE: Limpiar datos antes de generar
+        import numpy as np
+        df_cleaned = df_for_generation.copy()
         
-        print(f"🏭 [{datetime.datetime.now().strftime('%H:%M:%S')}] Llamando al agente generator...")
-        # Llamar al agente generador
-        response = await self.agents["generator"].process(state["user_input"], updated_context)
-        state["messages"] = state.get("messages", []) + [response]
+        # Convertir columnas numéricas con comas a puntos decimales y limpiar
+        cleaned_count = 0
+        for col in df_cleaned.columns:
+            if df_cleaned[col].dtype == 'object':
+                try:
+                    # Reemplazar comas por puntos y convertir a numérico
+                    temp_series = df_cleaned[col].astype(str).str.replace(',', '.', regex=False)
+                    # Intentar convertir a numérico
+                    numeric_series = pd.to_numeric(temp_series, errors='coerce')
+                    # Si se convirtió exitosamente (más del 50% no son NaN), usar la versión numérica
+                    if numeric_series.notna().sum() > len(numeric_series) * 0.5:
+                        df_cleaned[col] = numeric_series
+                        cleaned_count += 1
+                        logger.debug("Columna '%s' convertida de object a numeric", col)
+                except Exception as e:
+                    logger.debug("No se pudo convertir columna '%s': %s", col, e)
         
-        end_time = time.time()
-        print(f"✅ [{datetime.datetime.now().strftime('%H:%M:%S')}] Generator completado en {end_time - start_time:.2f}s")
-        return state
+        # Rellenar NaN en columnas numéricas con la mediana
+        numeric_cols = df_cleaned.select_dtypes(include=[np.number]).columns
+        for col in numeric_cols:
+            if df_cleaned[col].isna().any():
+                median_val = df_cleaned[col].median()
+                if not pd.isna(median_val):
+                    df_cleaned[col].fillna(median_val, inplace=True)
+                else:
+                    df_cleaned[col].fillna(0, inplace=True)
+        
+        logger.info("✅ Datos limpiados para generación (%d columnas convertidas a numéricas)", cleaned_count)
+        
+        try:
+            updated_context = {**state["context"], **params}
+            updated_context["dataframe"] = df_cleaned
+            updated_context["original_dataframe"] = df
+            
+            logger.info("🤖 Llamando al agente generator con contexto actualizado...")
+            logger.info("   - model_type: %s", updated_context.get("model_type", "auto"))
+            logger.info("   - num_samples: %s", updated_context.get("num_samples", 100))
+            logger.info("   - dataframe shape: %s", df_cleaned.shape)
+            
+            response = await self.agents["generator"].process(state["user_input"], updated_context)
+            
+            logger.info("📨 Generator response keys: %s", list(response.keys()))
+            logger.info("📨 Generator response tiene synthetic_data: %s", response.get("synthetic_data") is not None)
+            
+            if response.get("error"):
+                logger.error("❌ Generator devolvió un error: %s", response.get("message"))
+                state["error"] = response.get("message")
+                state["messages"] = state.get("messages", []) + [response]
+                return state
+            
+            state["messages"] = state.get("messages", []) + [response]
+            
+            # 🔥 IMPORTANTE: Guardar datos sintéticos en el state y context
+            if response.get("synthetic_data") is not None:
+                state["context"]["synthetic_data"] = response["synthetic_data"]
+                state["synthetic_data"] = response["synthetic_data"]
+                logger.info("✅ Datos sintéticos guardados en state: %s registros", len(response["synthetic_data"]))
+            else:
+                logger.warning("⚠️ Response del generator NO contiene synthetic_data")
+            
+            end_time = time.time()
+            logger.info("🎉 Generator completado exitosamente en %.2fs", end_time - start_time)
+            return state
+            
+        except Exception as e:
+            logger.error("❌ Error durante la ejecución del generator: %s", e, exc_info=True)
+            state["error"] = f"Error durante la generación: {str(e)}"
+            return state
 
-<<<<<<< HEAD
     async def _validator_node(self, state: AgentState) -> AgentState:
         """Nodo del validador médico que prioriza datos sintéticos sobre originales"""
         try:
             start_time = time.time()
-            print(f"🔍 [{datetime.datetime.now().strftime('%H:%M:%S')}] Iniciando validator_node")
+            logger.info("Iniciando validator_node")
             
             context = state["context"]
-            print(f"🔍 Context keys: {list(context.keys())}")
+            logger.debug("Context keys: %s", list(context.keys()))
             
-            # Priorizar datos sintéticos si están disponibles
             synthetic_data = context.get("synthetic_data")
+            
+            # 🔥 FIX: Obtener original_data sin usar 'or' con DataFrames
             original_data = context.get("dataframe")
             if original_data is None:
                 original_data = context.get("original_dataframe")
             
-            print(f"🔍 synthetic_data type: {type(synthetic_data)}")
-            print(f"🔍 original_data type: {type(original_data)}")
+            # 🔥 FIX: Check if synthetic_data is a DataFrame and not empty
+            has_synthetic = (synthetic_data is not None and 
+                           isinstance(synthetic_data, pd.DataFrame) and 
+                           not synthetic_data.empty)
             
-            if synthetic_data is not None and not synthetic_data.empty:
-                # Usar datos sintéticos
+            has_original = (original_data is not None and 
+                          isinstance(original_data, pd.DataFrame) and 
+                          not original_data.empty)
+            
+            if has_synthetic:
                 validation_context = {
                     **context,
                     "synthetic_data": synthetic_data,
-                    "dataframe": original_data,  # Para comparación/referencia
+                    "dataframe": original_data,
                     "validation_target": "synthetic"
                 }
-                print("✅ Validando datos sintéticos")
-            elif original_data is not None and not original_data.empty:
-                # Usar datos originales como fallback
+                logger.info("Validando datos sintéticos (%sx%s)", synthetic_data.shape[0], synthetic_data.shape[1])
+            elif has_original:
                 validation_context = {
                     **context,
-                    "synthetic_data": original_data,  # Usar como datos a validar
+                    "synthetic_data": original_data,
                     "dataframe": original_data,
                     "validation_target": "original"
                 }
-                print("✅ Validando datos originales (no hay datos sintéticos disponibles)")
+                logger.info("Validando datos originales (%sx%s)", original_data.shape[0], original_data.shape[1])
             else:
-                # Error: no hay datos para validar
                 state["error"] = "No hay datos disponibles para validación."
                 return state
             
-            print(f"🔍 [{datetime.datetime.now().strftime('%H:%M:%S')}] Llamando al agente validator...")
-            # Procesar validación
+            logger.info("Llamando al agente validator...")
             response = await self.agents["validator"].process(state["user_input"], validation_context)
             state["messages"] = state.get("messages", []) + [response]
             
             end_time = time.time()
-            print(f"✅ [{datetime.datetime.now().strftime('%H:%M:%S')}] Validator completado en {end_time - start_time:.2f}s")
+            logger.info("Validator completado en %.2fs", end_time - start_time)
             return state
         except Exception as e:
-            print(f"❌ Error en _validator_node: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Error en _validator_node: %s", e)
             state["error"] = f"Error en validación: {str(e)}"
             return state
 
-=======
->>>>>>> 40c25c65a57723c645d22f0e7d238eb02cbdbda6
+    async def _evaluator_node(self, state: AgentState) -> AgentState:
+        """Nodo del evaluador de utilidad para medir calidad de datos sintéticos"""
+        try:
+            start_time = time.time()
+            logger.info("Iniciando evaluator_node")
+            
+            context = state["context"]
+            logger.debug("Context keys: %s", list(context.keys()))
+            
+            synthetic_data = context.get("synthetic_data")
+            
+            # 🔥 FIX: Obtener original_data sin usar 'or' con DataFrames
+            original_data = context.get("dataframe")
+            if original_data is None:
+                original_data = context.get("original_dataframe")
+            
+            # 🔥 FIX: Check if synthetic_data is a DataFrame and not empty
+            has_synthetic = (synthetic_data is not None and 
+                           isinstance(synthetic_data, pd.DataFrame) and 
+                           not synthetic_data.empty)
+            
+            has_original = (original_data is not None and 
+                          isinstance(original_data, pd.DataFrame) and 
+                          not original_data.empty)
+            
+            if has_synthetic:
+                evaluation_context = {
+                    **context,
+                    "synthetic_data": synthetic_data,
+                    "dataframe": original_data,
+                    "evaluation_target": "synthetic"
+                }
+                logger.info("Evaluando datos sintéticos (%sx%s)", synthetic_data.shape[0], synthetic_data.shape[1])
+            elif has_original:
+                evaluation_context = {
+                    **context,
+                    "dataframe": original_data,
+                    "evaluation_target": "original"
+                }
+                logger.info("Evaluando datos originales (%sx%s)", original_data.shape[0], original_data.shape[1])
+            else:
+                state["error"] = "No hay datos disponibles para evaluación."
+                return state
+            
+            logger.info("Llamando al agente evaluator...")
+            response = await self.agents["evaluator"].process(state["user_input"], evaluation_context)
+            state["messages"] = state.get("messages", []) + [response]
+            
+            end_time = time.time()
+            logger.info("Evaluator completado en %.2fs", end_time - start_time)
+            return state
+        except Exception as e:
+            import traceback
+            logger.error("Error en _evaluator_node: %s", e)
+            logger.error("Traceback: %s", traceback.format_exc())
+            state["error"] = f"Error en evaluación: {str(e)}"
+            return state
+
+    async def _simulator_node(self, state: AgentState) -> AgentState:
+        """Nodo del simulador de pacientes para evolución clínica"""
+        try:
+            start_time = time.time()
+            logger.info("Iniciando simulator_node")
+            
+            context = state["context"]
+            logger.debug("Context keys: %s", list(context.keys()))
+            
+            synthetic_data = context.get("synthetic_data")
+            
+            # 🔥 FIX: Obtener original_data sin usar 'or' con DataFrames
+            original_data = context.get("dataframe")
+            if original_data is None:
+                original_data = context.get("original_dataframe")
+            
+            # 🔥 FIX: Check if synthetic_data is a DataFrame and not empty
+            has_synthetic = (synthetic_data is not None and 
+                           isinstance(synthetic_data, pd.DataFrame) and 
+                           not synthetic_data.empty)
+            
+            has_original = (original_data is not None and 
+                          isinstance(original_data, pd.DataFrame) and 
+                          not original_data.empty)
+            
+            if has_synthetic:
+                simulation_context = {
+                    **context,
+                    "synthetic_data": synthetic_data,
+                    "dataframe": original_data,
+                    "simulation_target": "synthetic"
+                }
+                logger.info("Simulando evolución con datos sintéticos (%sx%s)", synthetic_data.shape[0], synthetic_data.shape[1])
+            elif has_original:
+                simulation_context = {
+                    **context,
+                    "dataframe": original_data,
+                    "simulation_target": "original"
+                }
+                logger.info("Simulando evolución con datos originales (%sx%s)", original_data.shape[0], original_data.shape[1])
+            else:
+                state["error"] = "No hay datos disponibles para simulación."
+                return state
+            
+            logger.info("Llamando al agente simulator...")
+            response = await self.agents["simulator"].process(state["user_input"], simulation_context)
+            state["messages"] = state.get("messages", []) + [response]
+            
+            end_time = time.time()
+            logger.info("Simulator completado en %.2fs", end_time - start_time)
+            return state
+        except Exception as e:
+            import traceback
+            logger.error("Error en _simulator_node: %s", e)
+            logger.error("Traceback: %s", traceback.format_exc())
+            state["error"] = f"Error en simulación: {str(e)}"
+            return state
+
     def _route_from_coordinator(self, state: AgentState) -> str:
         coordinator_response = state["coordinator_response"]
         intended_agent = coordinator_response.get("agent")
         intention = coordinator_response.get("intention")
         
-        # Si es una conversación, terminar directamente con la respuesta del coordinador
+        logger.info("Routing desde coordinator: agent=%s, intention=%s", intended_agent, intention)
+        
         if intention == "conversacion" or intended_agent == "coordinator":
             state["messages"] = [coordinator_response]
+            logger.info("Routing a END (conversación)")
             return "__end__"
 
-        # Si es un comando específico, dirigir al agente correspondiente
         if intended_agent == "analyzer":
             if not state["context"].get("universal_analysis"):
+                logger.info("Routing a universal_analyzer (análisis inicial)")
                 return "universal_analyzer"
+            logger.info("Routing a analyzer (análisis detallado)")
             return "analyzer"
         
         if intended_agent == "generator":
+            logger.info("Routing a generator")
             return "generator"
         
-        # Para cualquier otro agente o caso, terminar con la respuesta del coordinador
+        if intended_agent == "validator":
+            logger.info("Routing a validator")
+            return "validator"
+        
+        if intended_agent == "evaluator":
+            logger.info("Routing a evaluator")
+            return "evaluator"
+        
+        if intended_agent == "simulator":
+            logger.info("Routing a simulator")
+            return "simulator"
+        
+        logger.warning("Routing no encontrado, yendo a END por defecto")
         state["messages"] = [coordinator_response]
         return "__end__"
 
     async def process_user_input(self, user_input: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
         workflow_start_time = time.time()
-        print(f"🚀 [{datetime.datetime.now().strftime('%H:%M:%S')}] Iniciando process_user_input para: {user_input[:50]}...")
+        logger.info("Iniciando process_user_input para: %s", user_input[:50])
         
         initial_state: AgentState = {
             "user_input": user_input, 
@@ -318,33 +555,34 @@ class MedicalAgentsOrchestrator:
         }
         
         try:
-            print(f"🚀 [{datetime.datetime.now().strftime('%H:%M:%S')}] Invocando workflow LangGraph...")
+            logger.info("Invocando workflow LangGraph...")
             final_state = await self.workflow.ainvoke(initial_state)
             
             workflow_end_time = time.time()
-            print(f"✅ [{datetime.datetime.now().strftime('%H:%M:%S')}] Workflow completado en {workflow_end_time - workflow_start_time:.2f}s")
+            logger.info("Workflow completado en %.2fs", workflow_end_time - workflow_start_time)
             
-            # Si hay mensajes, devolver el último
             if final_state.get("messages"):
-                print(f"📤 Devolviendo último mensaje de {len(final_state['messages'])} mensajes")
-                return final_state["messages"][-1]
+                logger.info("Devolviendo último mensaje de %s mensajes", len(final_state['messages']))
+                result = final_state["messages"][-1]
+                # 🔥 IMPORTANTE: Incluir datos sintéticos si existen
+                if final_state.get("synthetic_data") is not None:
+                    result["synthetic_data"] = final_state["synthetic_data"]
+                    logger.info("✅ Datos sintéticos incluidos en resultado: %s registros", len(final_state["synthetic_data"]))
+                return result
             
-            # Si hay una respuesta del coordinador pero no mensajes, usar esa respuesta
             if final_state.get("coordinator_response"):
-                print("📤 Devolviendo respuesta del coordinador")
+                logger.info("Devolviendo respuesta del coordinador")
                 return final_state["coordinator_response"]
             
-            # Si hay un error específico, devolverlo
             if final_state.get("error"):
-                print(f"❌ Error en workflow: {final_state['error']}")
+                logger.error("Error en workflow: %s", final_state['error'])
                 return {
                     "message": f"❌ Error: {final_state['error']}", 
                     "agent": "system",
                     "error": True
                 }
             
-            # Fallback: respuesta por defecto
-            print("⚠️ No hay mensajes ni respuestas válidas")
+            logger.warning("No hay mensajes ni respuestas válidas")
             return {
                 "message": "Lo siento, no pude procesar tu solicitud. ¿Podrías intentar reformularla?",
                 "agent": "coordinator",
@@ -353,8 +591,7 @@ class MedicalAgentsOrchestrator:
         
         except Exception as e:
             workflow_end_time = time.time()
-            print(f"❌ [{datetime.datetime.now().strftime('%H:%M:%S')}] Error en workflow después de {workflow_end_time - workflow_start_time:.2f}s: {e}")
-            logger.error(f"Error en process_user_input: {e}")
+            logger.error("Error en workflow después de %.2fs: %s", workflow_end_time - workflow_start_time, e)
             return {
                 "message": f"❌ Error interno: {str(e)}",
                 "agent": "system", 

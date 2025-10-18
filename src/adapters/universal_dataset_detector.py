@@ -9,10 +9,11 @@ from typing import Dict, List, Tuple, Optional, Any
 from enum import Enum
 from dataclasses import dataclass
 import re
-import logging
+# import logging
+from src.utils.logging_config import get_logger
 
 # Configurar logger
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class DatasetType(Enum):
     """Tipos de datasets médicos soportados"""
@@ -312,11 +313,11 @@ class UniversalDatasetDetector:
                     try:
                         pd.to_datetime(col_data.head(10), errors='raise')
                         return True
-                    except:
+                    except Exception:
                         return False
             
             return False
-        except:
+        except Exception:
             return False
 
     def _calculate_column_confidence(self, column_name: str, col_data: pd.Series, detected_type: ColumnType) -> float:
@@ -389,13 +390,13 @@ class UniversalDatasetDetector:
         high_null_columns = [name for name, mapping in column_mappings.items() 
                            if mapping.null_percentage > 20]
         if high_null_columns:
-            recommendations.append(f"Considerar imputación para columnas con muchos nulos: {', '.join(high_null_columns[:3])}")
+            recommendations.append("Considerar imputación para columnas con muchos nulos: %s" % ', '.join(high_null_columns[:3]))
         
         # Recomendación sobre tipos de datos
         unknown_columns = [name for name, mapping in column_mappings.items() 
                          if mapping.detected_type == ColumnType.UNKNOWN]
         if unknown_columns:
-            recommendations.append(f"Revisar columnas no identificadas: {', '.join(unknown_columns[:3])}")
+            recommendations.append("Revisar columnas no identificadas: %s" % ', '.join(unknown_columns[:3]))
         
         # Recomendación específica por dominio
         if dataset_type == DatasetType.COVID19:
@@ -420,14 +421,30 @@ class UniversalDatasetDetector:
             Diccionario con resultados del análisis universal
         """
         try:
-            # 1. Detectar tipo de dataset
-            dataset_type = self.detect_dataset_type(df)
+            # 🔥 OPTIMIZACIÓN: Muestreo estratificado para datasets grandes
+            # Solo para análisis, NO para generación
+            original_rows = len(df)
+            original_cols = len(df.columns)
+            df_analysis = df
+            sampling_applied = False
             
-            # 2. Inferir columnas médicas
-            column_mappings = self.infer_medical_columns(df)
+            # Criterio: Si el dataset es muy grande, tomar muestra
+            if original_rows > 2000 and original_cols > 50:
+                # Muestra estratificada de 2000 filas (suficiente para análisis estadístico)
+                sample_size = min(2000, original_rows)
+                df_analysis = df.sample(n=sample_size, random_state=42)
+                sampling_applied = True
+                logger.info("📊 Dataset grande detectado (%dx%d). Usando muestra de %d filas para análisis", 
+                           original_rows, original_cols, sample_size)
             
-            # 3. Extraer patrones de dominio
-            domain_patterns = self.extract_domain_patterns(df)
+            # 1. Detectar tipo de dataset (usando muestra si aplica)
+            dataset_type = self.detect_dataset_type(df_analysis)
+            
+            # 2. Inferir columnas médicas (usando muestra si aplica)
+            column_mappings = self.infer_medical_columns(df_analysis)
+            
+            # 3. Extraer patrones de dominio (usando muestra si aplica)
+            domain_patterns = self.extract_domain_patterns(df_analysis)
             
             # 4. Generar mapeo de columnas mejorado
             column_inference = {}
@@ -444,14 +461,14 @@ class UniversalDatasetDetector:
             
             # 5. Crear lista de patrones de dominio
             domain_pattern_list = [
-                f"Medical domain: {domain_patterns.medical_domain.value}",
-                f"Data quality score: {domain_patterns.data_quality_score:.2f}"
+                "Medical domain: %s" % domain_patterns.medical_domain.value,
+                "Data quality score: %.2f" % domain_patterns.data_quality_score
             ]
             domain_pattern_list.extend(domain_patterns.key_indicators)
             domain_pattern_list.extend(domain_patterns.recommendations)
             
             # 6. Resultado completo
-            return {
+            result = {
                 'dataset_type': dataset_type.value,
                 'is_covid_dataset': dataset_type == DatasetType.COVID19,
                 'column_inference': column_inference,
@@ -460,11 +477,21 @@ class UniversalDatasetDetector:
                 'key_indicators': domain_patterns.key_indicators,
                 'recommendations': domain_patterns.recommendations,
                 'medical_domain': dataset_type.value,
-                'analysis_timestamp': pd.Timestamp.now().isoformat()
+                'analysis_timestamp': pd.Timestamp.now().isoformat(),
+                # 🔥 Información del muestreo
+                'sampling_info': {
+                    'original_rows': original_rows,
+                    'original_columns': original_cols,
+                    'sampling_applied': sampling_applied,
+                    'analyzed_rows': len(df_analysis),
+                    'sampling_note': f"Análisis basado en muestra de {len(df_analysis)} filas" if sampling_applied else "Análisis completo"
+                }
             }
             
+            return result
+            
         except Exception as e:
-            logger.error(f"Error en análisis universal: {e}")
+            logger.error("Error en análisis universal: %s", e)
             return {
                 'dataset_type': 'unknown',
                 'is_covid_dataset': False,
@@ -472,7 +499,7 @@ class UniversalDatasetDetector:
                 'domain_patterns': [],
                 'data_quality_score': 0.0,
                 'key_indicators': [],
-                'recommendations': [f"Error en análisis: {str(e)}"],
+                'recommendations': ["Error en análisis: %s" % str(e)],
                 'medical_domain': 'unknown',
                 'analysis_timestamp': pd.Timestamp.now().isoformat(),
                 'error': True

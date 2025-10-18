@@ -1,0 +1,7 @@
+{
+  "dependencies": ["./requirements.txt"],
+  "graphs": {
+    "medical_workflow": "./src/orchestration/graph_builder.py:create_langgraph_studio_graph"
+  },
+  "env": ".env"
+}

@@ -2,24 +2,47 @@ import numpy as np
 import pandas as pd
 import os
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
+from src.simulation.transition_model import LearnedTransitionModel
+from src.utils.logging_config import get_logger
 
-# NUEVO: No cargar automáticamente al importar
+logger = get_logger(__name__)
+
 
 class ProgressSimulator:
-    """Simulador de progresión de pacientes - Motor compartido"""
+    """Simulador de progresión de pacientes - Motor compartido con modelo aprendido"""
     
-    def __init__(self, data_source: pd.DataFrame, disease_type: str = "general"):
-        """Inicializa con datos o crea datos de fallback si no se proporcionan"""
+    def __init__(self, data_source: pd.DataFrame, disease_type: str = "general", use_learned_model: bool = True):
+        """
+        Inicializa con datos o crea datos de fallback si no se proporcionan
+        
+        Args:
+            data_source: DataFrame con datos de pacientes
+            disease_type: Tipo de enfermedad ('covid19', 'general', etc.)
+            use_learned_model: Si True, usa modelo de transición aprendido
+        """
         if data_source is not None and not data_source.empty:
             self.df = data_source
-            print(f"🎯 Simulador inicializado con {len(data_source)} registros externos")
+            logger.info(f"🎯 Simulador inicializado con {len(data_source)} registros externos")
         else:
-            print("⚠️ No se proporcionaron datos válidos. Usando datos mínimos de fallback.")
+            logger.warning("⚠️ No se proporcionaron datos válidos. Usando datos mínimos de fallback.")
             self.df = self._create_fallback_data()
         
         self.disease_type = disease_type
-        print(f"Simulador configurado para tipo de enfermedad: {self.disease_type}")
+        self.use_learned_model = use_learned_model
+        
+        # Inicializar modelo de transición aprendido
+        self.transition_model: Optional[LearnedTransitionModel] = None
+        if use_learned_model and not self.df.empty:
+            try:
+                self.transition_model = LearnedTransitionModel()
+                self.transition_model.fit(self.df, disease_type)
+                logger.info(f"✅ Modelo de transición aprendido inicializado para {disease_type}")
+            except Exception as e:
+                logger.warning(f"⚠️ No se pudo inicializar modelo aprendido: {e}, usando simulación simple")
+                self.use_learned_model = False
+        
+        logger.info(f"Simulador configurado para tipo de enfermedad: {self.disease_type}, modelo aprendido: {self.use_learned_model}")
 
     def _create_fallback_data(self) -> pd.DataFrame:
         """Crea datos mínimos de ejemplo si no hay archivos disponibles"""
@@ -36,8 +59,38 @@ class ProgressSimulator:
             'discharge_motive': ['Domicilio'] * 10
         })
     
-    def simulate_disease_progression(self, current_value: float, improvement: bool = True, param_type: str = 'general') -> float:
-        """Simula progresión de una variable clínica basada en el tipo de enfermedad"""
+    def simulate_disease_progression(
+        self,
+        current_value: float,
+        improvement: bool = True,
+        param_type: str = 'general',
+        visit_number: int = 1,
+        severity: str = "moderate"
+    ) -> Tuple[float, bool]:
+        """
+        Simula progresión de una variable clínica
+        
+        Args:
+            current_value: Valor actual
+            improvement: Hint de si debería mejorar (usado solo si no hay modelo aprendido)
+            param_type: Tipo de parámetro
+            visit_number: Número de visita para modelo temporal
+            severity: Severidad del caso
+            
+        Returns:
+            Tuple[nuevo_valor, es_mejora_real]
+        """
+        # Si tenemos modelo aprendido, usarlo
+        if self.use_learned_model and self.transition_model and self.transition_model.is_fitted:
+            try:
+                new_value, actual_improvement = self.transition_model.predict_next_value(
+                    current_value, param_type, visit_number, severity
+                )
+                return new_value, actual_improvement
+            except Exception as e:
+                logger.warning(f"⚠️ Error en modelo aprendido para {param_type}: {e}, usando fallback")
+        
+        # Fallback: simulación simple (código original mejorado)
         delta = np.random.normal(-5 if improvement else 5, 2)
         new_value = current_value + delta
 
@@ -51,11 +104,10 @@ class ProgressSimulator:
                     new_value = max(94.0, min(100.0, new_value))
             elif param_type == 'pcr_result':
                 new_value = max(0, new_value)
-        # Añadir lógica para otras enfermedades si es necesario
-        else: # General
-            new_value = max(0, new_value) # Asegurar no negativos para la mayoría
+        else:
+            new_value = max(0, new_value)
 
-        return new_value
+        return new_value, improvement
     
     def simulate_single_patient_visit(self, patient_data: pd.Series, visit_day: int = 1) -> Dict[str, Any]:
         """Simula una visita individual para un paciente"""
@@ -64,12 +116,33 @@ class ProgressSimulator:
         sat = patient_data.get('oxygen_saturation', 98.0)
         pcr = patient_data.get('pcr_result', 0.0)
         temp = patient_data.get('temperature', 37.0)
+        icu_days = patient_data.get('icu_days', 0)
+        
+        # Determinar severidad basada en parámetros actuales
+        if icu_days > 0 or sat < 90 or temp > 39:
+            severity = "severe"
+        elif sat < 95 or temp > 38 or pcr > 10:
+            severity = "moderate"
+        else:
+            severity = "mild"
         
         # Aplicar evolución basada en el día y tipo de enfermedad
-        new_pcr = self.simulate_disease_progression(pcr + (visit_day * 0.5), param_type='pcr_result')
-        improvement = new_pcr < 10.0 # Criterio de mejora para COVID
-        new_sat = self.simulate_disease_progression(sat, improvement, 'oxygen_saturation')
-        new_temp = self.simulate_disease_progression(temp, improvement, 'temperature')
+        new_pcr, pcr_improved = self.simulate_disease_progression(
+            pcr + (visit_day * 0.5), True, 'pcr_result', visit_day, severity
+        )
+        
+        # Determinar mejora general basada en PCR
+        improvement = new_pcr < 10.0
+        
+        new_sat, sat_improved = self.simulate_disease_progression(
+            sat, improvement, 'oxygen_saturation', visit_day, severity
+        )
+        new_temp, temp_improved = self.simulate_disease_progression(
+            temp, improvement, 'temperature', visit_day, severity
+        )
+        
+        # La mejora real es si la mayoría de parámetros mejoraron
+        actual_improvement = sum([pcr_improved, sat_improved, temp_improved]) >= 2
         
         date = (datetime.now() + timedelta(days=visit_day)).strftime('%Y-%m-%d')
         
@@ -80,11 +153,13 @@ class ProgressSimulator:
                 "PCR": float(round(new_pcr, 2)),
                 "SAT_O2": float(round(new_sat, 2)),
                 "TEMP": float(round(new_temp, 2))
-            }
+            },
+            'severity': severity,
+            'improved': actual_improvement
         }
 
         # Asignar síntomas y acciones según el estado y tipo de enfermedad
-        visit.update(self._assign_clinical_actions(new_sat, new_pcr, improvement))
+        visit.update(self._assign_clinical_actions(new_sat, new_pcr, actual_improvement))
         
         return visit
     
