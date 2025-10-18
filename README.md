@@ -1,4 +1,4 @@
-# PatientIA: Sistema de Aumento de Datos Médicos con Agentes IA
+# PatientIA: Sistema de Generación de Datos Médicos Sintéticos con Agentes IA
 
 PatientIA es un sistema avanzado que utiliza un flujo de trabajo basado en agentes de IA para analizar, generar, validar y simular datos de pacientes, con el objetivo de aumentar datasets médicos para investigación y entrenamiento de modelos.
 
@@ -8,53 +8,41 @@ El núcleo del sistema es un grafo de agentes orquestado por LangGraph. Cada age
 
 ### Diagrama del Flujo de Agentes
 
-```mermaid
-graph TD
-    A[Coordinator] --> B(Analyzer);
-    A --> C(Generator);
-    A --> D(Validator);
-    A --> E(Evaluator);
-    A --> F(Simulator);
+```
+                    ┌─────────────┐
+                    │ Coordinator │
+                    │  (Central)  │
+                    └──────┬──────┘
+                           │
+        ┌──────────────────┼──────────────────┐
+        │                  │                  │
+        ▼                  ▼                  ▼
+    ┌─────────┐      ┌─────────────┐    ┌─────────────┐
+    │Analyzer │◄────►│  Generator  │◄──►│  Validator  │
+    │(Análisis│      │(Generación) │    │(Validación) │
+    │   EDA)  │      └─────────────┘    └─────────────┘
+    └─────────┘             │                   │
+         │                  ▼                   ▼
+         │            ┌─────────────┐    ┌─────────────┐
+         └───────────►│  Evaluator  │◄───│  Simulator  │
+                      │(Evaluación) │    │(Simulación) │
+                      └─────────────┘    └─────────────┘
 
-    B --> C;
-    B --> F;
-    B --> A;
-
-    C --> D;
-    C --> E;
-    C --> B;
-    C --> A;
-
-    D --> E;
-    D --> F;
-    D --> C;
-    D --> A;
-
-    E --> F;
-    E --> C;
-    E --> B;
-    E --> A;
-
-    F --> A;
-    F --> E;
-
-    subgraph "Flujo Principal"
-        direction LR
-        B --> C --> D --> E;
-    end
-
-    style A fill:#FF6B6B,stroke:#333,stroke-width:2px
-    style B fill:#4ECDC4,stroke:#333,stroke-width:2px
-    style C fill:#45B7D1,stroke:#333,stroke-width:2px
-    style D fill:#96CEB4,stroke:#333,stroke-width:2px
-    style E fill:#FFEAA7,stroke:#333,stroke-width:2px
-    style F fill:#DDA0DD,stroke:#333,stroke-width:2px
+    Flujo Principal: Analyzer → Generator → Validator → Evaluator
+    
+    Características:
+    • Coordinator: Punto de entrada y coordinación central
+    • Analyzer: Análisis exploratorio de datos (EDA)
+    • Generator: Generación de datos sintéticos (CTGAN/TVAE/SDV)
+    • Validator: Validación de reglas clínicas
+    • Evaluator: Evaluación de calidad
+    • Simulator: Simulación temporal de condiciones
 ```
 
 ### Descripción de los Agentes
 - **Coordinator:** Punto de entrada. Dirige la tarea inicial al agente apropiado.
 - **Analyzer:** Realiza un análisis exploratorio de los datos médicos.
-- **Generator:** Genera datos sintéticos utilizando modelos como CTGAN o TVAE.
+- **Generator:** Genera datos sintéticos utilizando modelos como CTGAN, TVAE o SDV.
 - **Validator:** Aplica reglas clínicas y esquemas para asegurar la coherencia de los datos.
 - **Evaluator:** Mide la calidad y realismo de los datos generados.
 - **Simulator:** Simula la evolución temporal de las condiciones del paciente.
@@ -160,43 +148,7 @@ La API de PatientIA proporciona los siguientes endpoints para interactuar con el
 
 ---
 
-## 📚 Documentación
-
-El proyecto cuenta con documentación exhaustiva organizada por categorías:
-
-### Documentación Principal
-- **[INDICE_DOCUMENTACION.md](./INDICE_DOCUMENTACION.md)** - Índice maestro de toda la documentación
-- **[ARQUITECTURA_AGENTES_DETALLADA.md](./ARQUITECTURA_AGENTES_DETALLADA.md)** - Arquitectura del sistema multi-agente
-- **[GUIA_DEPURACION_OPTIMIZACION.md](./GUIA_DEPURACION_OPTIMIZACION.md)** - Guía de debugging y optimización
-
-### Documentación de Optimización
-- **[docs/phases/](./docs/phases/)** - Documentación de fases de optimización
-  - Fase 1: Coordinador (✅ Completada - 2000x speedup)
-  - Fase 2: Analizador (✅ Completada - 243x speedup, análisis EDA completo)
-  - Ver [README de fases](./docs/phases/README.md) para más detalles
-
-### Tests
-- **[tests/](./tests/)** - Suite completa de tests automatizados
-  - Tests de optimización por fase
-  - Tests de integración
-  - Scripts de debugging
-  - Ver [README de tests](./tests/README.md) para más detalles
-
-## 🚀 Estado del Proyecto
-
-### Fases Completadas
-- ✅ **Fase 1**: Optimización del Coordinador (2000x speedup para respuestas comunes)
-- ✅ **Fase 2**: Optimización del Analizador (243x speedup para análisis cacheados + análisis EDA completo)
-
-### Próximas Fases
-- 📋 **Fase 3**: Optimización del Generador (caché de modelos, early stopping)
-- 📋 **Fase 4-6**: Optimización de Validador, Evaluador y Simulador
-
-Ver [PLAN_MEJORAS_INCREMENTALES.md](./PLAN_MEJORAS_INCREMENTALES.md) para el roadmap completo.
-
----
-
-## 🛠️ Estado del Sistema y Bitácora
+## ️ Estado del Sistema y Bitácora
 
 ### Estado Actual del Sistema
 
@@ -225,5 +177,4 @@ Ver [PLAN_MEJORAS_INCREMENTALES.md](./PLAN_MEJORAS_INCREMENTALES.md) para el roa
   - Planificación de la limpieza de código obsoleto.
   - Definición de la arquitectura final y preparación para la entrega al equipo de frontend.
 
----
-*Este README fue generado y unificado automáticamente por Gemini.*
+
