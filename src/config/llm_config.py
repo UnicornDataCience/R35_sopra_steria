@@ -314,8 +314,8 @@ class GeminiProvider(BaseLLMProvider):
         try:
             self.api_key = os.getenv("GEMINI_API_KEY")
             # El modelo es configurable vía GEMINI_MODEL; ajústalo al que cubran
-            # tus créditos (p. ej. gemini-2.0-flash, gemini-1.5-pro, gemini-1.5-flash).
-            self.model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+            # tus créditos (p. ej. gemini-3.8-flash, gemini-3.8-pro).
+            self.model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
             
             if self.api_key:
                 self.available = True
