@@ -168,6 +168,15 @@ class OrchestratorService:
             }
         )
 
+    async def process_clinical_history(self, context: Optional[Dict[str, Any]] = None):
+        """Ejecuta el pipeline determinista de historial de cohorte (si está disponible)."""
+        if hasattr(self.orchestrator, "process_clinical_history"):
+            return await self._maybe_await(self.orchestrator.process_clinical_history, dict(context or {}))
+        return {
+            "error": "El pipeline de historial de cohorte no está disponible (orquestador en modo mock).",
+            "steps": {},
+        }
+
     async def process_user_input(self, message: str, context: Optional[Dict[str, Any]] = None):
         ctx = dict(context or {})
         if hasattr(self.orchestrator, "process_user_input"):

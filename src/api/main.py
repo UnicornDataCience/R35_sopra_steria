@@ -26,7 +26,8 @@ from api.routers import (
     health_router,
     evaluation_router,
     simulation_router,
-    llm_router
+    llm_router,
+    report_router
 )
 from src.api.cache_routes import router as cache_router
 from api.middleware.error_handler import error_handler_middleware
@@ -82,6 +83,7 @@ app.include_router(generation_router.router, prefix="/api/v1", tags=["generation
 app.include_router(validation_router.router, prefix="/api/v1", tags=["validation"])
 app.include_router(evaluation_router.router, prefix="/api/v1", tags=["evaluation"])
 app.include_router(simulation_router.router, prefix="/api/v1", tags=["simulation"])
+app.include_router(report_router.router, prefix="/api/v1", tags=["report"])
 
 # Servir el frontend estático desde /app (incluye index.html y assets)
 CLIENT_DIR = None
