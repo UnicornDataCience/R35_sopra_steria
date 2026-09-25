@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Patient-IA — Historial clínico sintético</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Login -->
+  <div id="login-view" class="login-view">
+    <form id="login-form" class="login-card" autocomplete="off">
+      <div class="brand">🩺 Patient-IA</div>
+      <p class="subtitle">Acceso para personal clínico</p>
+      <label>Usuario<input id="username" type="text" value="doctor" required /></label>
+      <label>Contraseña<input id="password" type="password" placeholder="••••••••" required /></label>
+      <button type="submit" class="btn-primary">Entrar</button>
+      <div id="login-error" class="error"></div>
+      <p class="hint">Usuario de desarrollo por defecto: <code>doctor</code> / <code>patientia</code></p>
+    </form>
+  </div>
+
+  <!-- App -->
+  <div id="app-view" class="app-view hidden">
+    <header class="topbar">
+      <div class="brand-sm">🩺 Patient-IA</div>
+      <div class="topbar-right">
+        <span id="who" class="who"></span>
+        <button id="logout-btn" class="btn-ghost">Salir</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <!-- Cohorte / informe -->
+      <section class="panel">
+        <h2>Historial clínico sintético de cohorte</h2>
+        <div class="row">
+          <input type="file" id="file-input" accept=".csv" />
+          <button id="upload-btn" class="btn-secondary">Subir CSV</button>
+        </div>
+        <div id="dataset-status" class="status muted">Sin dataset cargado.</div>
+
+        <div class="row">
+          <label class="inline">Modelo
+            <select id="model-type">
+              <option value="auto">Auto</option>
+              <option value="sdv" selected>SDV</option>
+              <option value="ctgan">CTGAN</option>
+              <option value="tvae">TVAE</option>
+            </select>
+          </label>
+          <label class="inline">Nº pacientes
+            <input id="num-samples" type="number" value="50" min="1" max="1000" />
+          </label>
+          <button id="report-btn" class="btn-primary" disabled>Generar informe</button>
+        </div>
+        <div id="report-status" class="status"></div>
+        <iframe id="report-frame" class="report-frame" title="Informe de cohorte"></iframe>
+      </section>
+
+      <!-- Chat -->
+      <aside class="chat">
+        <h3>Asistente (orquestador)</h3>
+        <div id="chat-log" class="chat-log">
+          <div class="msg assistant">Hola, soy el asistente médico. Sube un CSV y pídeme un análisis, o genera el historial de cohorte.</div>
+        </div>
+        <form id="chat-form" class="chat-form">
+          <input id="chat-input" type="text" placeholder="Escribe tu pregunta…" autocomplete="off" />
+          <button type="submit" class="btn-primary">Enviar</button>
+        </form>
+      </aside>
+    </main>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
