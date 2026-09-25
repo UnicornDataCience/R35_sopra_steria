@@ -18,6 +18,7 @@ from ..agents.evaluator_agent import UtilityEvaluatorAgent
 from ..adapters.universal_dataset_detector import UniversalDatasetDetector
 from ..utils.streamlit_async_wrapper import run_async_safe
 from src.utils.logging_config import get_logger
+from src.orchestration import contracts
 
 # Configurar logger centralizado
 logger = get_logger(__name__)
@@ -42,9 +43,35 @@ class MedicalAgentsOrchestrator:
         
         logger.info("Creando workflow...")
         self.workflow = self._create_workflow()
+        # Pipeline lineal determinista para el "historial de cohorte".
+        self.pipeline_workflow = self._create_clinical_history_workflow()
         
         end_time = time.time()
         logger.info("LangGraph Orchestrator inicializado en %.2fs", end_time - start_time)
+
+    def _create_clinical_history_workflow(self) -> StateGraph:
+        """Grafo lineal fijo (acíclico) del pipeline de historial de cohorte.
+
+        Secuencia determinista definida en el contrato:
+        universal_analyzer -> analyzer -> generator -> validator -> evaluator -> simulator.
+        No hay aristas de retorno, por lo que no puede generar bucles.
+        """
+        workflow = StateGraph(AgentState)
+        workflow.add_node("universal_analyzer", self._universal_analyzer_node)
+        workflow.add_node("analyzer", self._analyzer_node)
+        workflow.add_node("generator", self._generator_node)
+        workflow.add_node("validator", self._validator_node)
+        workflow.add_node("evaluator", self._evaluator_node)
+        workflow.add_node("simulator", self._simulator_node)
+
+        workflow.add_edge(START, "universal_analyzer")
+        workflow.add_edge("universal_analyzer", "analyzer")
+        workflow.add_edge("analyzer", "generator")
+        workflow.add_edge("generator", "validator")
+        workflow.add_edge("validator", "evaluator")
+        workflow.add_edge("evaluator", "simulator")
+        workflow.add_edge("simulator", END)
+        return workflow.compile()
 
     def _create_workflow(self) -> StateGraph:
         workflow = StateGraph(AgentState)
@@ -513,6 +540,23 @@ class MedicalAgentsOrchestrator:
             logger.info("Routing a END (conversación)")
             return "__end__"
 
+        # 🔒 Validación por contrato: el coordinador solo puede delegar en los
+        # destinos permitidos. Un destino no permitido (p. ej. alucinado por el
+        # LLM) termina el flujo de forma controlada en lugar de enrutar mal.
+        if not contracts.is_allowed("coordinator", intended_agent):
+            logger.warning(
+                "Destino '%s' no permitido por el contrato de agentes; enrutando a END",
+                intended_agent,
+            )
+            controlled = dict(coordinator_response)
+            controlled["message"] = (
+                coordinator_response.get("message")
+                or f"El destino solicitado ('{intended_agent}') no está permitido por el contrato de agentes."
+            )
+            controlled["agent"] = "coordinator"
+            state["messages"] = [controlled]
+            return "__end__"
+
         if intended_agent == "analyzer":
             if not state["context"].get("universal_analysis"):
                 logger.info("Routing a universal_analyzer (análisis inicial)")
@@ -556,7 +600,9 @@ class MedicalAgentsOrchestrator:
         
         try:
             logger.info("Invocando workflow LangGraph...")
-            final_state = await self.workflow.ainvoke(initial_state)
+            final_state = await self.workflow.ainvoke(
+                initial_state, config={"recursion_limit": contracts.RECURSION_LIMIT}
+            )
             
             workflow_end_time = time.time()
             logger.info("Workflow completado en %.2fs", workflow_end_time - workflow_start_time)
@@ -597,6 +643,61 @@ class MedicalAgentsOrchestrator:
                 "agent": "system", 
                 "error": True
             }
+
+    async def process_clinical_history(self, context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Ejecuta el pipeline lineal determinista de historial de cohorte.
+
+        Recorre analyzer -> generator -> validator -> evaluator -> simulator una
+        sola vez y devuelve un dict estructurado con la salida de cada agente,
+        pensado para el ensamblador de informe (`src/reporting/report_builder.py`).
+        """
+        workflow_start_time = time.time()
+        ctx = dict(context or {})
+        ctx.setdefault("model_type", ctx.get("model_type", "auto"))
+        ctx.setdefault("num_samples", ctx.get("num_samples", 200))
+
+        if ctx.get("dataframe") is None:
+            return {"error": "No se proporcionó un dataset base para el historial de cohorte.", "steps": {}}
+
+        initial_state: AgentState = {
+            "user_input": "Genera el historial clínico sintético de la cohorte",
+            "context": ctx,
+            "messages": [],
+            "coordinator_response": {},
+            "universal_analysis": {},
+            "next_agent": "",
+            "error": "",
+        }
+
+        try:
+            final_state = await self.pipeline_workflow.ainvoke(
+                initial_state, config={"recursion_limit": contracts.RECURSION_LIMIT}
+            )
+        except Exception as e:
+            logger.error("Error en pipeline de historial de cohorte: %s", e, exc_info=True)
+            return {"error": f"Error en el pipeline: {e}", "steps": {}}
+
+        # Indexar los mensajes por agente para el informe.
+        steps: Dict[str, Any] = {}
+        for msg in final_state.get("messages", []) or []:
+            if isinstance(msg, dict):
+                agent = msg.get("agent") or "unknown"
+                steps[agent] = msg
+
+        synthetic_data = final_state.get("synthetic_data")
+        if synthetic_data is None:
+            synthetic_data = final_state.get("context", {}).get("synthetic_data")
+
+        elapsed = time.time() - workflow_start_time
+        logger.info("Pipeline de historial de cohorte completado en %.2fs", elapsed)
+        return {
+            "error": final_state.get("error") or None,
+            "steps": steps,
+            "universal_analysis": final_state.get("universal_analysis") or {},
+            "synthetic_data": synthetic_data,
+            "context": final_state.get("context", {}),
+            "elapsed_seconds": elapsed,
+        }
 
     def process_user_input_sync(self, user_input: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
         """Versión síncrona robusta usando wrapper para evitar problemas de event loop en Streamlit"""

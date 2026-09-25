@@ -4,7 +4,7 @@ API RESTful para el sistema de agentes médicos de generación de datos sintéti
 """
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks
+from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -26,12 +26,18 @@ from api.routers import (
     health_router,
     evaluation_router,
     simulation_router,
-    llm_router
+    llm_router,
+    report_router,
+    auth_router
 )
 from src.api.cache_routes import router as cache_router
 from api.middleware.error_handler import error_handler_middleware
 from api.core.config import settings
+from api.core.auth import get_current_user
 from src.utils.logging_config import get_logger
+
+# Dependencia de autenticación aplicada a los routers protegidos.
+_auth = [Depends(get_current_user)]
 
 logger = get_logger(__name__)
 
@@ -73,15 +79,20 @@ app.add_middleware(
 app.middleware("http")(error_handler_middleware)
 
 # Incluir routers
+# Públicos: health, estado de LLM y autenticación.
 app.include_router(health_router.router, prefix="/api/v1", tags=["health"])
 app.include_router(llm_router.router, prefix="/api/v1", tags=["llm"])
-app.include_router(chat_router.router, prefix="/api/v1", tags=["chat"])
-app.include_router(dataset_router.router, prefix="/api/v1", tags=["datasets"])
-app.include_router(analysis_router.router, prefix="/api/v1", tags=["analysis"])
-app.include_router(generation_router.router, prefix="/api/v1", tags=["generation"])
-app.include_router(validation_router.router, prefix="/api/v1", tags=["validation"])
-app.include_router(evaluation_router.router, prefix="/api/v1", tags=["evaluation"])
-app.include_router(simulation_router.router, prefix="/api/v1", tags=["simulation"])
+app.include_router(auth_router.router, prefix="/api/v1", tags=["auth"])
+
+# Protegidos por JWT (Depends(get_current_user)).
+app.include_router(chat_router.router, prefix="/api/v1", tags=["chat"], dependencies=_auth)
+app.include_router(dataset_router.router, prefix="/api/v1", tags=["datasets"], dependencies=_auth)
+app.include_router(analysis_router.router, prefix="/api/v1", tags=["analysis"], dependencies=_auth)
+app.include_router(generation_router.router, prefix="/api/v1", tags=["generation"], dependencies=_auth)
+app.include_router(validation_router.router, prefix="/api/v1", tags=["validation"], dependencies=_auth)
+app.include_router(evaluation_router.router, prefix="/api/v1", tags=["evaluation"], dependencies=_auth)
+app.include_router(simulation_router.router, prefix="/api/v1", tags=["simulation"], dependencies=_auth)
+app.include_router(report_router.router, prefix="/api/v1", tags=["report"], dependencies=_auth)
 
 # Servir el frontend estático desde /app (incluye index.html y assets)
 CLIENT_DIR = None

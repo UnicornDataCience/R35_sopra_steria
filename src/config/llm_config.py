@@ -313,7 +313,9 @@ class GeminiProvider(BaseLLMProvider):
         super().__init__("Gemini")
         try:
             self.api_key = os.getenv("GEMINI_API_KEY")
-            self.model = os.getenv("GEMINI_MODEL", "gemini-1.5-pro")
+            # El modelo es configurable vía GEMINI_MODEL; ajústalo al que cubran
+            # tus créditos (p. ej. gemini-3.8-flash, gemini-3.8-pro).
+            self.model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
             
             if self.api_key:
                 self.available = True
@@ -402,7 +404,7 @@ class UnifiedLLMConfig:
         """Determina proveedor sin test de conexión (lazy)."""
         preferred = (os.getenv("LLM_PROVIDER") or "").lower()
         if not preferred:
-            preferred = "groq"  # Preferencia por defecto confirmada por usuario
+            preferred = "gemini"  # Proveedor por defecto: Google Gemini
         logger.debug("Preferencia LLM_PROVIDER: %s", preferred)
         
         if preferred in self.providers and self.providers[preferred].available:

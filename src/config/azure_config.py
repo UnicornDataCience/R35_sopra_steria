@@ -14,23 +14,41 @@ class AzureOpenAIConfig:
         self.deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4-TFM")
         self.api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview")
         self.model = os.getenv("AZURE_OPENAI_MODEL", "gpt-4")
-        
-        self._validate_config()
-    
-    def _validate_config(self):
-        """Valida que la configuración esté completa"""
+
+        # La validación no debe abortar la importación del paquete: Azure es solo
+        # uno de los proveedores soportados (Groq, Ollama, etc.). Se difiere el
+        # error hasta que realmente se intente usar el LLM de Azure.
+        self.is_configured = self._validate_config()
+
+    def _validate_config(self) -> bool:
+        """Comprueba que la configuración de Azure esté completa.
+
+        Devuelve True si está lista para usarse y False en caso contrario, en
+        lugar de lanzar una excepción, para permitir que el sistema opere con
+        otros proveedores de LLM cuando Azure no está configurado.
+        """
         required_vars = {
             "AZURE_OPENAI_ENDPOINT": self.endpoint,
             "AZURE_OPENAI_API_KEY": self.api_key,
             "AZURE_OPENAI_DEPLOYMENT": self.deployment
         }
-        
+
         missing_vars = [var for var, value in required_vars.items() if not value]
         if missing_vars:
-            raise ValueError(f"Variables de entorno faltantes: {', '.join(missing_vars)}")
-    
+            print(
+                "Azure OpenAI no configurado (faltan: "
+                f"{', '.join(missing_vars)}). Se usará otro proveedor de LLM si está disponible."
+            )
+            return False
+        return True
+
     def create_llm(self, temperature: float = 0.1, max_tokens: int = 2000) -> AzureChatOpenAI:
         """Crea instancia de Azure OpenAI LLM"""
+        if not self.is_configured:
+            raise ValueError(
+                "Azure OpenAI no está configurado. Define AZURE_OPENAI_ENDPOINT y "
+                "AZURE_OPENAI_API_KEY para usar este proveedor."
+            )
         return AzureChatOpenAI(
             azure_deployment=self.deployment,
             azure_endpoint=self.endpoint,
