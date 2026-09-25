@@ -1,7 +1,7 @@
 """
 Autenticación JWT sencilla (usuario/contraseña) para la API.
 
-- Hash de contraseñas con `hashlib.pbkdf2_hmac` (stdlib, sin dependencias nuevas).
+- Hash de contraseñas con `passlib[bcrypt]` (bcrypt).
 - Emisión/validación de JWT con `python-jose` (ya declarado en requirements-api.txt).
 - Almacén de usuarios mínimo, sembrado desde la variable de entorno AUTH_USERS
   ("usuario:contraseña" separados por comas). Si no se define, se crea un
@@ -12,9 +12,6 @@ Configuración por entorno:
 - AUTH_USERS: "doctor:clave,admin:otra".
 - AUTH_TOKEN_TTL_MIN: minutos de validez del token (por defecto 480).
 """
-import base64
-import hashlib
-import hmac
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -23,6 +20,7 @@ from typing import Dict, Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
+from passlib.context import CryptContext
 
 from src.utils.logging_config import get_logger
 
@@ -43,25 +41,18 @@ if not _SECRET_KEY:
 
 _bearer = HTTPBearer(auto_error=False)
 
+# Contexto de hashing con bcrypt (passlib).
+_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 
 # ------------------------------ Password hashing ------------------------------
-def hash_password(password: str, *, iterations: int = 200_000, salt: Optional[bytes] = None) -> str:
-    salt = salt or os.urandom(16)
-    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
-    return "pbkdf2_sha256${}${}${}".format(
-        iterations, base64.b64encode(salt).decode(), base64.b64encode(dk).decode()
-    )
+def hash_password(password: str) -> str:
+    return _pwd_context.hash(password)
 
 
 def verify_password(password: str, stored: str) -> bool:
     try:
-        algo, iters, salt_b64, hash_b64 = stored.split("$")
-        if algo != "pbkdf2_sha256":
-            return False
-        salt = base64.b64decode(salt_b64)
-        expected = base64.b64decode(hash_b64)
-        dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, int(iters))
-        return hmac.compare_digest(dk, expected)
+        return _pwd_context.verify(password, stored)
     except Exception:
         return False
 
